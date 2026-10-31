@@ -1,0 +1,52 @@
+[
+ {
+  "probe": "AC1a after resume, the killed run's child process is gone (reaped, not self-finished)",
+  "pass": false,
+  "detail": "child 3831516 alive_after_resume=True"
+ },
+ {
+  "probe": "AC1b completed stage A is not re-run",
+  "pass": true,
+  "detail": "A ran 1x"
+ },
+ {
+  "probe": "AC1c crashed stage B ran exactly 2x (1 killed + 1 resume)",
+  "pass": true,
+  "detail": "B ran 2x"
+ },
+ {
+  "probe": "AC1d pipeline completes after resume",
+  "pass": true,
+  "detail": "status=done"
+ },
+ {
+  "probe": "AC2 exit 0 + artifact fails its check -> NOT complete, later stage untouched",
+  "pass": false,
+  "detail": "status=done later_stage_ran=1x"
+ },
+ {
+  "probe": "AC3a finished task re-run: no stage executes",
+  "pass": true,
+  "detail": "A=1 B=1"
+ },
+ {
+  "probe": "AC3b finished task re-run: state bytes unchanged",
+  "pass": true,
+  "detail": "9b7ca3a4 vs 9b7ca3a4"
+ },
+ {
+  "probe": "AC4 second concurrent runner refused (single writer)",
+  "pass": false,
+  "detail": "stage executed 2x by 2 concurrent runners; 2nd rc=0"
+ },
+ {
+  "probe": "AC7 SIGTERM -> exit 143 and the state says 'interrupted'",
+  "pass": false,
+  "detail": "rc=-15 interrupted_recorded=False"
+ },
+ {
+  "probe": "APPROVAL gate stays closed on re-run with no human action",
+  "pass": false,
+  "detail": "run1=awaiting_gate; plain re-run=done; irreversible stage executed 1x"
+ }
+]

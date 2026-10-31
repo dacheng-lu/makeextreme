@@ -100,11 +100,11 @@
 ## 8. 待你决定
 
 - **D1 项目名**：**已定** — 仓库 `makeextreme`，展示名"登峰 · Makeextreme"。
-- **D2 钉版本**：钉 Longhaul v1.1（`af52cd8`，推荐）· 等 v1.2 发布后再钉。
-- **D3 仓库位置**：独立仓库（推荐，因为 Longhaul 把"无运行时"写成了非目标）· 放进 Longhaul 的 `hosts/`。
-- **D4 第一个客户**：视频流水线（推荐，已有真实痛点和现成脚本）· `grill-me` cron。
-- **D5 M1 的执行方式**：deepseek 执行 + Sonnet 中间审计 + 最后 Opus 终审（Sonnet 本机现在可用）· 全部自己写。
-  不用 GPT-6-Astra，不动额度。
+- **D2 钉版本**：钉 Longhaul v1.1（`af52cd8`）——默认采用。Longhaul v1.2 目前未发布且在修（见聊天），不依赖它。
+- **D3 仓库位置**：独立仓库 `~/Projects/makeextreme`——默认采用。
+- **D4 第一个客户**：视频流水线——默认采用。
+- **D5 M1 的执行方式**：**已定 = A**（2026-10-31，用户回复）。我自己写；Sonnet 在里程碑处审计；Opus 只做最终审；不动 GPT-6-Astra。
+- **D6 交付内容的来源**：**已定**（2026-10-31，用户指令）：结合 Superpowers、ECC、Ponytail 与本地 Hermes 实用且适用的 skill。取舍台账见 `docs/SOURCES.md`。
 
 ## 9. 同类对照（2026-10-31，GitHub API 实测星数；功能描述取自各仓库自述，未逐个运行）
 
@@ -127,7 +127,18 @@
 3. **与 Longhaul 的状态格式和 gate 原生对接**（证据绑定到产物哈希，凭据扫描）。
 4. **Python 标准库、单文件级别、本机可读可改**。
 
-**M1 第 0 步（先做，限时一个工作段）**：对 kiso、resilient-agent-toolkit-v2、DVC 三个，
+**M1 第 0 步（先做，限一个工作段）**：对 kiso、resilient-agent-toolkit-v2、DVC 三个，
 按 AC1–AC4、AC7 和审批各做一次真实试跑（不是读 README）。
 **停止准则**：若其中任一个已满足 AC1–AC4、AC7，且能被 Hermes 的 shell host 直接驱动，
 则**采用它**，本项目只保留 AC8（gate 桥）和"产物检查即完成"这层薄包装；否则按原计划继续写。
+
+**第 0 步结果（2026-10-31，已执行）**：详见 `docs/STEP0_同类试跑.md`。同一组黑盒场景：
+M0 spike（对照）9/9；toolkit-v2 5/10；DVC 8/11；kiso 未运行（它是需要接模型的 agent 运行时，
+准则对它不适用——依据 README 的推断，未运行其 kill -9 脚本）。**无一满足 AC1–AC4、AC7 → 不采用，继续自己写。**
+副产物：AC5 照 DVC 的阶段指纹做（不引入 DVC）；孤儿缺口用 kiso 的"uncertain"思路闭合；
+审批必须是绑定产物哈希的独立记录（toolkit-v2 的审批门在无人批准时再跑一次就自动放行，已复现）。
+
+## 10. 交付内容的来源（D6）
+
+见 `docs/SOURCES.md`（采用 / 复用 / 不取 的逐项台账）与 `NOTICE.md`。结论：运行器 + CLI（机械规则）、
+**仅 1 个**新 skill `makeextreme-stage-design`、playbook 模板（先做视频流水线）、对既有 skill 的小补丁（不新增索引行）。

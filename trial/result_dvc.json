@@ -1,0 +1,62 @@
+[
+ {
+  "probe": "AC1a after resume, killed run's child process is gone (reaped)",
+  "pass": false,
+  "detail": "child 3888745 alive_after_resume=True"
+ },
+ {
+  "probe": "AC1b completed stage A not re-run",
+  "pass": true,
+  "detail": "A ran 1x"
+ },
+ {
+  "probe": "AC1c crashed stage B ran exactly 2x",
+  "pass": true,
+  "detail": "B ran 2x"
+ },
+ {
+  "probe": "AC1d pipeline completes",
+  "pass": true,
+  "detail": "rc=0 c.out=True; stderr=\" Process '/home/dav/.hermes/cache/scratch/dvcenv/bin/dvc repro' with (Pid 3888457), in RWLock-file 'b.out' had been killed. Auto removed it from the lock file.\\n\""
+ },
+ {
+  "probe": "AC2 exit 0 + artifact content wrong (needs content check) -> NOT complete",
+  "pass": false,
+  "detail": "later stage ran 1x, rc=0 (DVC only checks that declared outs EXIST)"
+ },
+ {
+  "probe": "AC2' exit 0 + declared output MISSING -> NOT complete (native existence check)",
+  "pass": true,
+  "detail": "later ran 0x rc=255"
+ },
+ {
+  "probe": "AC3a finished task re-run: no stage executes",
+  "pass": true,
+  "detail": "A=1 B=1"
+ },
+ {
+  "probe": "AC3b finished task re-run: dvc.lock bytes unchanged",
+  "pass": true,
+  "detail": "13e68d2a vs 13e68d2a"
+ },
+ {
+  "probe": "AC4 second concurrent runner refused",
+  "pass": true,
+  "detail": "stage executed 1x; 2nd rc=255; msg=\"there are no processes with such PIDs, you can manually remove '/home/dav/.hermes/cache/scratch/tmpuu0t0b04/.dvc/tmp/rwlock' and try again.\\n\""
+ },
+ {
+  "probe": "AC7 SIGTERM -> exit 143 and a persisted 'interrupted' record",
+  "pass": false,
+  "detail": "rc=-15 interrupted_recorded=False"
+ },
+ {
+  "probe": "APPROVAL gate (pause for human, stay closed until approval)",
+  "pass": null,
+  "detail": "DVC has no approval/gate concept -> not counted"
+ },
+ {
+  "probe": "AC5 changed stage -> only dependents re-run (A,B again; independent X not)",
+  "pass": true,
+  "detail": "A=2 B=2 X=1"
+ }
+]
