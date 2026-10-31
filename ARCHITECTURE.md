@@ -1,6 +1,6 @@
-# Harness 层 — 架构冻结稿 v0.1
+# 登峰 · Makeextreme — 架构冻结稿 v0.1
 
-状态：草稿，待你确认后冻结 · 日期：2026-10-31 · 项目名：**未定**（目录暂用 `harness-layer`）
+状态：草稿，待你确认后冻结 · 日期：2026-10-31 · 仓库名：`makeextreme`（已确认可用：GitHub 用户/组织、PyPI、npm 均为空）
 证据标签：**[实测]** 本次在本机跑过 · **[读取]** 读自文件 · **[推断]** 我的判断，可能错
 
 ---
@@ -99,9 +99,35 @@
 
 ## 8. 待你决定
 
-- **D1 项目名**（见聊天里的候选）。
+- **D1 项目名**：**已定** — 仓库 `makeextreme`，展示名"登峰 · Makeextreme"。
 - **D2 钉版本**：钉 Longhaul v1.1（`af52cd8`，推荐）· 等 v1.2 发布后再钉。
 - **D3 仓库位置**：独立仓库（推荐，因为 Longhaul 把"无运行时"写成了非目标）· 放进 Longhaul 的 `hosts/`。
 - **D4 第一个客户**：视频流水线（推荐，已有真实痛点和现成脚本）· `grill-me` cron。
 - **D5 M1 的执行方式**：deepseek 执行 + Sonnet 中间审计 + 最后 Opus 终审（Sonnet 本机现在可用）· 全部自己写。
   不用 GPT-6-Astra，不动额度。
+
+## 9. 同类对照（2026-10-31，GitHub API 实测星数；功能描述取自各仓库自述，未逐个运行）
+
+**结论：崩溃续跑 + 审批这一块已经有人做了，不是空白。** 本项目不能把它当卖点。
+
+| 类别 | 项目 | 与本项目的重叠 |
+|---|---|---|
+| agent 持久运行时 | `vincemakes/kiso` ★83（TypeScript，约 2,200 行内核）：事件溯源会话、跨进程持久的审批、崩溃后精确续跑 | **最接近**：续跑 + 审批几乎同款 |
+| agent 持久运行时 | `julep-ai/julep` ★6,575：崩溃可续、可安全重试、解释每一步 | 续跑 |
+| agent 编排 | `kelvinschen/acpus` ★41（TypeScript）：编排 Claude/Codex 等，崩溃存活、暂停续跑 | 续跑 + 多宿主 |
+| agent 预算与续跑 | `prashar32/riskkernel` ★20：预算、崩溃可续、人工审批门 | 续跑 + 审批 |
+| Python 零依赖 | `chenhz01/resilient-agent-toolkit-v2` ★0：检查点/续跑等零依赖 Python 工具 | 语言与风格最像，但几乎无人用 |
+| 通用耐久执行 | Temporal ★24k、Restate ★4.6k、DBOS（Python）★1.7k、Inngest ★6k、LangGraph ★44k | 续跑 + 状态持久 |
+| 阶段哈希与续跑 | DVC ★16k、Snakemake ★2.9k、Nextflow ★3.5k | **只重跑变化的阶段**，对应 AC5 |
+| 证据校验 | `yebiguo/ProofRun` ★15、`rokabytedev/proofrun` ★12、`donewhen` ★65 | "证据而非声明" |
+
+**所以真正可能成立的差异只剩这几条**（均为 [推断]，需要在 M1 开头验证）：
+1. **完成 = 对实际产物的检查通过，不是进程退出码**（F5）。上表项目多数以步骤返回为完成。
+2. **套在现有宿主（Hermes、Claude Code）外面，不是又一个 agent 运行时**。kiso、julep、acpus 都自带运行时。
+3. **与 Longhaul 的状态格式和 gate 原生对接**（证据绑定到产物哈希，凭据扫描）。
+4. **Python 标准库、单文件级别、本机可读可改**。
+
+**M1 第 0 步（先做，限时一个工作段）**：对 kiso、resilient-agent-toolkit-v2、DVC 三个，
+按 AC1–AC4、AC7 和审批各做一次真实试跑（不是读 README）。
+**停止准则**：若其中任一个已满足 AC1–AC4、AC7，且能被 Hermes 的 shell host 直接驱动，
+则**采用它**，本项目只保留 AC8（gate 桥）和"产物检查即完成"这层薄包装；否则按原计划继续写。
