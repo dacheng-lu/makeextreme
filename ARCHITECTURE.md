@@ -83,7 +83,7 @@
 估算未经测量，仅供排序。
 
 - **M0 可行性**（已完成）：`spike/runner.py` 约 130 行 + 11 个探针。
-- **M1 核心**：补 AC5、AC6、AC8；闭合已知缺口；把 spike 拆成可复用模块。
+- **M1 核心**（**已完成 2026-11-01**，提交 `0abc449`、`102f57c`）：AC5、AC6、AC8 已补；孤儿缺口已闭合；spike 拆成包 `makeextreme/`（`core.py`、`secret_scan.py`、`__main__.py`）。27 个测试 + 18 个变异体均被抓到；`spike/test_m0.py` 仍 11/11。**未做**：独立审计（D5：Sonnet 里程碑审计）、`requesting-code-review` 两处措辞补丁、skill `makeextreme-stage-design`。
 - **M2 宿主**：shell + Hermes 两个 host，AC9。
 - **M3 第一个客户**：视频流水线（AC10）；之后接 `grill-me` cron。
 - **M4 收口**：README、CI、与 Longhaul 钉版本对账。
