@@ -249,6 +249,18 @@ mut("O11_deps_outputs_overlap_allowed", CORE, '        if both:', '        if Fa
 mut("O12_outputs_type_unchecked", CORE, """if not (isinstance(outs, list) and all(isinstance(x, str) and x for x in outs)):""", "if False:", (OUT_T, "list_of_paths"),
     "'outputs' may be anything")
 
+RM_T = "test_roadmap.py"
+mut("RM1_roadmap_lacks_the_current_version", "ROADMAP.md", "- **1.1.0** (2026-11-01):", "- **1.0.9** (2026-11-01):",
+    (RM_T, "current_version"), "the roadmap does not list the version the code has as released")
+mut("RM2_roadmap_link_is_broken", "ROADMAP.md", "[NOTICE.md](NOTICE.md)", "[NOTICE.md](NOTICE-missing.md)",
+    (RM_T, "relative_link"), "the roadmap links to a file that does not exist")
+mut("RM3_readme_drops_the_roadmap_link", "README.md", "| [ROADMAP.md](ROADMAP.md) |", "| ROADMAP.md |",
+    (RM_T, "readme_links"), "the README no longer links to the roadmap")
+mut("RM4_roadmap_loses_a_section", "ROADMAP.md", "## Owed", "## Pending", (RM_T, "sections"),
+    "the roadmap has no section for what is still owed")
+mut("RM5_roadmap_lists_an_unreleased_version", "ROADMAP.md", "- **1.0.0** (2026-11-01):", "- **1.2.0** (2026-11-01):",
+    (RM_T, "nothing_after"), "the roadmap lists a released version the code does not have")
+
 _controls = {}
 
 
