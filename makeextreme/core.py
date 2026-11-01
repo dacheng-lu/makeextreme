@@ -5,7 +5,7 @@ approval, 5 an irreversible stage crashed or failed and needs `resolve`, 6 compl
 (secret-shaped value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json, an
 unreadable task.json or dependency, or a missing task directory, 130/143 stopped by SIGINT/SIGTERM.
 `approve` and `resolve` use 0 for done, 1 for a refusal (not an approval stage, artifact missing,
-stage not uncertain, check does not pass), 64 as above.
+stage not uncertain, check does not pass), 64 as above (`resolve` also 3 while a runner holds the lock).
 """
 import fcntl, getpass, hashlib, json, os, signal, subprocess, sys, tempfile, time
 
@@ -20,8 +20,16 @@ class SpecError(Exception):
 
 
 def atomic_write(path, obj):
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+    # SIGTERM/SIGINT stay pending from mkstemp until the cleanup below is in place, so a signal can
+    # never land while the temp file exists and nothing is responsible for removing it
+    held = signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGTERM, signal.SIGINT))
     try:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+    except BaseException:
+        signal.pthread_sigmask(signal.SIG_SETMASK, held)
+        raise
+    try:
+        signal.pthread_sigmask(signal.SIG_SETMASK, held)
         with os.fdopen(fd, "w") as f:
             json.dump(obj, f, indent=1)
             f.flush()
@@ -66,32 +74,40 @@ def _file_hash(path):
     return h.hexdigest()
 
 
-def _path_hash(p, stack):
-    """Content hash of one entry. A symlink counts by its text AND by what it points to now; a
-    directory by its entries' names and hashes; `stack` holds the real directories on the way down
-    (a link back into one of them is a cycle, not an endless walk)."""
+def _path_hash(p, stack, memo):
+    """Content hash of one entry. A symlink counts by its text AND by what it points to now (hashed
+    together, so neither a text that is not UTF-8 nor the target's size matters for display); a
+    directory by its entries' names and hashes. `stack` holds the real directories on the way down
+    (a link back into one of them is a cycle, not an endless walk); `memo` holds every real path
+    already hashed in this call, so links that fan out to the same place are read once."""
     if os.path.islink(p):
         target = os.path.realpath(p)
-        inner = _path_hash(target, stack) if os.path.exists(target) else "dangling"
-        return "link:" + os.readlink(p) + ">" + inner
+        inner = _path_hash(target, stack, memo) if os.path.exists(target) else "dangling"
+        text = os.readlink(p) + ">" + inner
+        return hashlib.sha256(("link:" + text).encode("utf-8", "surrogateescape")).hexdigest()
+    real = os.path.realpath(p)
     if os.path.isdir(p):
-        real = os.path.realpath(p)
         if real in stack:
             return "cycle"
+        if real in memo:
+            return memo[real]
         try:
             names = sorted(os.listdir(p))
         except OSError as e:
             raise SpecError(f"cannot read dependency {p}: {e.strerror or e}")
         h = hashlib.sha256()
         for n in names:
-            one = _path_hash(os.path.join(p, n), stack | {real})
+            one = _path_hash(os.path.join(p, n), stack | {real}, memo)
             h.update(n.encode("utf-8", "surrogateescape") + b"\0" + one.encode() + b"\n")
-        return h.hexdigest()
+        memo[real] = h.hexdigest()
+        return memo[real]
     if os.path.isfile(p):
-        try:
-            return _file_hash(p)
-        except OSError as e:
-            raise SpecError(f"cannot read dependency {p}: {e.strerror or e}")
+        if real not in memo:
+            try:
+                memo[real] = _file_hash(p)
+            except OSError as e:
+                raise SpecError(f"cannot read dependency {p}: {e.strerror or e}")
+        return memo[real]
     return "missing" if not os.path.lexists(p) else "other"
 
 
@@ -101,7 +117,10 @@ def dep_hash(base, rel):
     p = os.path.join(base, rel)
     if os.path.islink(p) and not os.path.exists(p):
         return "missing"
-    return _path_hash(p, frozenset())
+    try:
+        return _path_hash(p, frozenset(), {})
+    except RecursionError:
+        raise SpecError(f"dependency {rel!r} is nested too deeply to hash")
 
 
 def fingerprint(d, sp, hashes=None):
@@ -245,7 +264,7 @@ def secret_hits(d):
         p = os.path.join(d, name)
         if not os.path.exists(p):
             continue
-        with open(p) as f:
+        with open(p, errors="replace") as f:
             text = f.read()
         for n, chunk in enumerate([text] if name == "task.json" else text.splitlines(), 1):
             if not chunk.strip():
@@ -265,7 +284,7 @@ def approvals_path(d):
 
 def approved(d, sid, digest):
     try:
-        with open(approvals_path(d)) as f:
+        with open(approvals_path(d), errors="replace") as f:
             lines = f.read().splitlines()
     except OSError:
         return False
@@ -301,7 +320,13 @@ def _run(t, d):
     signal.signal(signal.SIGINT, on_signal)
     for sp in t.spec:
         sid, s = sp["id"], t.st(sp["id"])
-        fp = fingerprint(d, sp)
+        try:
+            fp = fingerprint(d, sp)
+        except SpecError as e:  # a dep became unreadable between stages: say so in the record
+            t.state["status"] = "refused"
+            t.save()
+            t.log("refused", stage=sid, reason=str(e))
+            raise
         if s["status"] == "done":
             if s.get("digest") == fp:
                 t.log("skip", stage=sid)
@@ -336,7 +361,9 @@ def _run(t, d):
         rc = proc.wait()
         chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True, errors="replace")
         ok = rc == 0 and chk.returncode == 0  # exit 0 alone is never "done"
-        s.update(status="done" if ok else "failed", rc=rc, check_rc=chk.returncode,
+        # an approval stage that failed is `uncertain` from the first write on: a kill between two
+        # writes must never leave `failed` behind (a plain run would repeat the irreversible command)
+        s.update(status="done" if ok else ("uncertain" if sp.get("approval") else "failed"), rc=rc, check_rc=chk.returncode,
                  check_out=chk.stdout.strip()[:200])
         for k in ("pgid", "pg_start", "run_id"):
             s.pop(k, None)

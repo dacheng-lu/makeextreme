@@ -37,7 +37,7 @@ mut("C4_fp_ignores_check", CORE, '"check": sp["check"], "deps": deps}', '"check"
     (FP, None), "the stage fingerprint ignores the check command")
 mut("C5_fp_ignores_run", CORE, 'doc = {"run": sp["run"],', 'doc = {"run": "",', (FP, None),
     "the stage fingerprint ignores the run command")
-mut("C6_dir_dep_by_name", CORE, 'one = _path_hash(os.path.join(p, n), stack | {real})',
+mut("C6_dir_dep_by_name", CORE, 'one = _path_hash(os.path.join(p, n), stack | {real}, memo)',
     'one = "x"', (FP, "directory"),
     "a directory dep is hashed by file names, not content")
 mut("A1_approval_any_digest", CORE, 'and r.get("digest") == digest:', 'and True:', (APP, "artifact"),
@@ -107,7 +107,7 @@ mut("E3a_check_utf8_in_run", CORE, 'text=True, errors="replace")\n        ok =',
     (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes the runner")
 mut("E3b_check_utf8_in_resolve", CORE, 'text=True, errors="replace")\n            if chk.returncode != 0:',
     'text=True)\n            if chk.returncode != 0:', (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes resolve --done")
-mut("E4a_symlink_by_text_only", CORE, 'inner = _path_hash(target, stack) if os.path.exists(target) else "dangling"',
+mut("E4a_symlink_by_text_only", CORE, 'inner = _path_hash(target, stack, memo) if os.path.exists(target) else "dangling"',
     'inner = ""', (FIND, "SymlinkDeps"), "a symlink is hashed by its text, not by what it points to")
 mut("E4b_symlink_cycle_unguarded", CORE, '        if real in stack:\n            return "cycle"',
     '        if False:\n            return "cycle"', (FIND, "SymlinkDeps"), "a symlink cycle recurses without end")
@@ -115,8 +115,8 @@ mut("E4c_dangling_link_is_an_artifact", CORE, '    if os.path.islink(p) and not 
     '    if False:\n        return "missing"', (FIND, "SymlinkDeps"), "a dangling symlink can be approved as an artifact")
 mut("E5_torn_tail_glues_next_entry", CORE, 'torn = f.read(1) != b"\\n"', 'torn = False', (FIND, "TornTails"),
     "an entry appended after a torn line is glued to the fragment and lost")
-mut("E8a_unreadable_file_traceback", CORE, '            return _file_hash(p)\n        except OSError as e:',
-    '            return _file_hash(p)\n        except KeyError as e:', (FIND, "UnreadableDep"),
+mut("E8a_unreadable_file_traceback", CORE, '                memo[real] = _file_hash(p)\n            except OSError as e:',
+    '                memo[real] = _file_hash(p)\n            except KeyError as e:', (FIND, "UnreadableDep"),
     "an unreadable dep file escapes as a traceback")
 mut("E8b_spec_error_escapes_run", CORE, '            return fn(Task(d))\n        except SpecError as e:',
     '            return fn(Task(d))\n        except KeyError as e:', (FIND, "UnreadableDep"),
@@ -133,6 +133,33 @@ mut("X4_attempts_constant", CORE, 's.update(status="running", attempts=s["attemp
     (FIND, "x4"), "the attempts counter never counts")
 mut("W1_atomic_write_leaves_temp", CORE, '            os.unlink(tmp)', '            pass', (FIND, "AtomicWriteCleanup"),
     "a failed atomic write leaves its temp file behind")
+
+mut("N1_failed_approval_saved_as_failed", CORE, '("uncertain" if sp.get("approval") else "failed")', '"failed"',
+    (FIND, "FailedApprovalIsNeverPersisted"), "a failed approval stage is first written as failed (a kill then repeats it)")
+mut("N12_atomic_write_signal_window", CORE, 'held = signal.pthread_sigmask(signal.SIG_BLOCK, (signal.SIGTERM, signal.SIGINT))',
+    'held = signal.pthread_sigmask(signal.SIG_SETMASK, ())', (FIND, "AtomicWriteSignalWindow"),
+    "a signal right after mkstemp leaves the temp file behind")
+mut("N2a_link_text_strict_utf8", CORE, '("link:" + text).encode("utf-8", "surrogateescape")', '("link:" + text).encode("utf-8")',
+    (FIND, "LinkTextAndDisplay"), "a symlink text that is not UTF-8 crashes the hashing")
+mut("N2b_link_shown_as_text", CORE, 'return hashlib.sha256(("link:" + text).encode("utf-8", "surrogateescape")).hexdigest()',
+    'return "link:" + text', (FIND, "LinkTextAndDisplay"), "a symlink is shown and bound by its text only")
+mut("N3_recursion_unguarded", CORE, '    except RecursionError:\n        raise SpecError(f"dependency {rel!r} is nested too deeply to hash")',
+    '    except KeyError:\n        raise SpecError(f"dependency {rel!r} is nested too deeply to hash")', (FIND, "n3_a_dep"),
+    "a very deep dep tree escapes as a traceback")
+mut("N4_no_memo", CORE, '        if real in memo:\n            return memo[real]', '        if False:\n            return memo[real]',
+    (FIND, "n4_links"), "links fanning out to the same directories are hashed once per path (exponential)")
+mut("Y2_interrupt_event_name", CORE, '"recovered_from_crash" if s["status"] == "running" else "recovered_from_interrupt"',
+    '"recovered_from_crash"', (FIND, "InterruptedStageIsReaped"), "recovery after an interrupt is logged as a crash")
+mut("Y3_cycle_guard_parent_only", CORE, 'stack | {real}, memo)\n            h.update', 'frozenset({real}), memo)\n            h.update',
+    (FIND, "y3"), "the cycle guard remembers only the parent directory")
+mut("Y7_name_encode_strict", CORE, 'h.update(n.encode("utf-8", "surrogateescape")', 'h.update(n.encode("utf-8")',
+    (FIND, "y7"), "a file name that is not UTF-8 crashes the hashing")
+mut("N5_refusal_not_recorded", CORE, '            t.state["status"] = "refused"\n            t.save()\n            t.log("refused", stage=sid, reason=str(e))\n            raise',
+    '            raise', (FIND, "UnreadableDep"), "a dep that turns unreadable mid-run leaves a silent `running`")
+mut("N6b_approvals_strict_utf8", CORE, 'with open(approvals_path(d), errors="replace") as f:', 'with open(approvals_path(d)) as f:',
+    (FIND, "RecordFilesWith"), "foreign bytes in approvals.jsonl crash the runner")
+mut("N6c_records_strict_utf8", CORE, 'with open(p, errors="replace") as f:\n            text = f.read()', 'with open(p) as f:\n            text = f.read()',
+    (FIND, "RecordFilesWith"), "foreign bytes in journal.jsonl crash the completion scan")
 
 _controls = {}
 

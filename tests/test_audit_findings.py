@@ -86,6 +86,8 @@ class InterruptedStageIsReaped(TaskCase):
             code = None
         self.assertEqual(code, -signal.SIGKILL, "the orphan of the interrupted stage was left running")
         self.assertIn("reaped", self.events(d))
+        self.assertIn("recovered_from_interrupt", self.events(d))  # named for what happened (not a crash)
+        self.assertNotIn("recovered_from_crash", self.events(d))
         self.assertEqual(self.lines(d, "out"), 1)
 
     def test_a_child_that_ignores_sigterm_does_not_run_beside_the_rerun(self):
@@ -217,20 +219,41 @@ class TornTails(TaskCase):
         self.assertEqual(parsed, ["start", "end"])
 
 
+def unreadable_dep(d, name="unreadable"):
+    """A dep that cannot be read by ANY uid (root included): its read fails with EIO."""
+    os.symlink("/proc/self/mem", os.path.join(d, name))
+    return name
+
+
 class UnreadableDep(TaskCase):
     """E8"""
 
     def test_an_unreadable_dep_is_a_clean_refusal_for_run_and_approve(self):
-        if os.geteuid() == 0:
-            self.skipTest("root reads everything; an unreadable file cannot be built")
-        d = self.task(send_spec("secret.txt"), {"secret.txt": "x\n"})
-        os.chmod(os.path.join(d, "secret.txt"), 0)
+        d = self.task(send_spec("unreadable"))
+        unreadable_dep(d)
         for cmd in (("run", d), ("approve", d, "send")):
             res = mx(*cmd)
             self.assertEqual(res.returncode, 64, (cmd[0], res.stderr))
-            self.assertIn("secret.txt", res.stderr)
+            self.assertIn("cannot read dependency", res.stderr)
             self.assertNotIn("Traceback", res.stderr)
         self.assertEqual(self.lines(d, "rs"), 0)
+        self.assertFalse(os.path.exists(os.path.join(d, "approvals.jsonl")))
+
+    def test_a_dep_that_turns_unreadable_mid_run_leaves_a_refused_task_and_no_repeat_later(self):
+        """N5: stage a is done, stage b's dep cannot be read: not a silent `running`, and a is not repeated."""
+        spec = [{"id": "a", "run": "echo a >> a.out", "check": "test -s a.out"},
+                {"id": "b", "run": "echo b >> b.out", "check": "test -s b.out", "deps": ["dep"]}]
+        d = self.task(spec)
+        unreadable_dep(d, "dep")
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 64, res.stderr)
+        st = self.state(d)
+        self.assertEqual((st["status"], st["stages"]["a"]["status"]), ("refused", "done"))
+        self.assertIn("refused", self.events(d))
+        os.unlink(os.path.join(d, "dep"))
+        self.write(d, "dep", "fixed\n")
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual((self.lines(d, "a.out"), self.lines(d, "b.out")), (1, 1))
 
 
 class ApproveHashesOnce(TaskCase):
@@ -301,6 +324,176 @@ class AtomicWriteCleanup(TaskCase):
                     core.atomic_write(path, {"v": 2})
             self.assertEqual(sorted(os.listdir(d)), before)
             self.assertEqual(json.loads(self.read(d, "task.json")), {"v": 1})
+
+
+class FailedApprovalIsNeverPersistedAsFailed(TaskCase):
+    """N1 (MAJOR of audit #2): between `failed` being saved and `uncertain` being saved a signal or a kill
+    made the next plain run repeat the irreversible command. It must be `uncertain` in the FIRST write."""
+
+    def test_the_first_write_after_a_failed_approval_stage_already_says_uncertain(self):
+        d = self.task([{"id": "send", "run": "echo pay >> pay.out; exit 1", "check": "true", "deps": ["art"],
+                        "approval": "required"}], {"art": "v1\n"})
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        seen = []
+        real_log = core.Task.log
+
+        def spy(task, ev, **kw):
+            if ev == "end":  # the stage has just ended; what is on disk right now is what a kill would leave
+                seen.append(json.loads(self.read(d, "task.json"))["stages"]["send"]["status"])
+            return real_log(task, ev, **kw)
+
+        saved = {n: signal.getsignal(n) for n in (signal.SIGTERM, signal.SIGINT)}
+        self.addCleanup(lambda: [signal.signal(n, h) for n, h in saved.items()])
+        with mock.patch.object(core.Task, "log", spy), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(core.run(d), core.EX_UNCERTAIN)
+        self.assertEqual(seen, ["uncertain"])
+        self.assertEqual(mx("run", d).returncode, 5)
+        self.assertEqual(self.lines(d, "pay.out"), 1)
+
+
+class AtomicWriteSignalWindow(TaskCase):
+    """N12a: a signal that lands right after mkstemp must not leave the temp file behind."""
+
+    def test_a_signal_right_after_mkstemp_leaves_no_temp_file(self):
+        d = self.task([{"id": "s", "run": "true", "check": "true"}])
+        path = os.path.join(d, "task.json")
+        core.atomic_write(path, {"v": 1})
+        before = sorted(os.listdir(d))
+
+        def stop(sig, frame):
+            raise SystemExit(128 + sig)
+
+        saved = signal.signal(signal.SIGTERM, stop)
+        self.addCleanup(lambda: signal.signal(signal.SIGTERM, saved))
+        real = core.tempfile.mkstemp
+
+        def mkstemp_then_sigterm(*a, **kw):
+            made = real(*a, **kw)
+            os.kill(os.getpid(), signal.SIGTERM)  # arrives while the temp file exists and is not ours yet
+            return made
+
+        with mock.patch.object(core.tempfile, "mkstemp", mkstemp_then_sigterm):
+            with self.assertRaises(SystemExit):
+                core.atomic_write(path, {"v": 2})
+        self.assertEqual(sorted(os.listdir(d)), before)
+        self.assertEqual(json.loads(self.read(d, "task.json")), {"v": 1})
+
+
+class LinkTextAndDisplay(TaskCase):
+    """N2/N8: a link text that is not valid UTF-8 is no reason to crash, and approve shows what it binds."""
+
+    def undecodable_link(self, where, target=b"\xff-target"):
+        os.symlink(os.fsdecode(target), where)  # the bad byte sits in the first characters approve prints
+
+    def test_a_symlink_dep_with_undecodable_text_is_hashed_not_a_traceback(self):
+        d = self.task(send_spec("art"), {"art/own": "1\n"})
+        self.undecodable_link(os.path.join(d, "art", "ln"))
+        res = mx("approve", d, "send")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertEqual(mx("run", d).returncode, 0)
+
+    def test_a_top_level_symlink_dep_with_undecodable_text_is_hashed_not_a_traceback(self):
+        d = self.task(send_spec("ln"))
+        self.undecodable_link(os.path.join(d, "ln"))
+        os.makedirs(os.path.join(d, os.fsdecode(b"\xff-target")))
+        res = mx("approve", d, "send")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+
+    def test_approve_shows_a_value_that_covers_the_content_behind_a_symlink(self):
+        d = self.task(send_spec(), {"real.txt": "one\n"})
+        os.symlink("real.txt", os.path.join(d, "link.txt"))
+        first = mx("approve", d, "send").stdout.splitlines()[1]
+        self.write(d, "real.txt", "two\n")
+        second = mx("approve", d, "send").stdout.splitlines()[1]
+        self.assertNotEqual(first, second, "the shown value did not change with the target's content")
+
+
+class DeepAndWideDeps(TaskCase):
+    SPEC = [{"id": "z", "run": "echo z >> r", "check": "test -s r", "deps": ["dep"]}]
+
+    def test_n3_a_dep_nested_too_deeply_is_a_clean_refusal(self):
+        d = self.task(self.SPEC)
+        os.mkdir(os.path.join(d, "dep"))
+        fd = os.open(os.path.join(d, "dep"), os.O_RDONLY | os.O_DIRECTORY)
+        for _ in range(1500):  # one level at a time through a descriptor: makedirs itself would recurse
+            os.mkdir("d", dir_fd=fd)
+            nxt = os.open("d", os.O_RDONLY | os.O_DIRECTORY, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        os.close(fd)
+
+        def remove_deep():  # shutil.rmtree recurses too: take the chain down from the bottom
+            for depth in range(1500, 0, -1):
+                os.rmdir(os.path.join(d, "dep", *["d"] * depth))
+        self.addCleanup(remove_deep)  # runs before the temporary directory's own cleanup
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 64, res.stderr[-300:])
+        self.assertIn("nested too deeply", res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+
+    def test_n4_links_fanning_out_to_the_same_directories_are_hashed_in_linear_time(self):
+        d = self.task(self.SPEC, {"dep/leaf": "x\n"})
+        previous = "dep"
+        for level in range(12):  # each level holds 4 links to the level below: 4**12 paths, 13 directories
+            here = os.path.join(d, f"lvl{level}")
+            os.makedirs(here)
+            for k in range(4):
+                os.symlink(os.path.join(d, previous), os.path.join(here, f"l{k}"))
+            previous = f"lvl{level}"
+        os.symlink(os.path.join(d, previous), os.path.join(d, "dep", "top"))
+        res = mx("run", d, timeout=15)
+        self.assertEqual(res.returncode, 0, res.stderr[-300:])
+
+    def test_y3_a_cycle_over_two_directories_is_detected(self):
+        d = self.task(self.SPEC, {"dep/a/f": "1\n", "dep/b/g": "2\n"})
+        os.symlink("../b", os.path.join(d, "dep", "a", "to_b"))
+        os.symlink("../a", os.path.join(d, "dep", "b", "to_a"))
+        self.assertEqual(mx("run", d, timeout=30).returncode, 0)
+        self.assertEqual(mx("run", d, timeout=30).returncode, 0)
+        self.assertEqual(self.lines(d, "r"), 1)
+        self.write(d, "dep/b/g", "changed\n")
+        self.assertEqual(mx("run", d, timeout=30).returncode, 0)
+        self.assertEqual(self.lines(d, "r"), 2)
+
+    def test_y7_a_file_name_that_is_not_valid_utf8_is_hashed(self):
+        d = self.task(self.SPEC)
+        os.makedirs(os.path.join(d, "dep"))
+        with open(os.path.join(os.fsencode(d), b"dep", b"bad-\xff.txt"), "wb") as f:
+            f.write(b"x")
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+
+
+class RecordFilesWithForeignBytes(TaskCase):
+    """N6b: approvals.jsonl / journal.jsonl are read as text; bytes that are not UTF-8 must not crash the runner."""
+
+    def raw(self, d, name, data):
+        with open(os.path.join(d, name), "wb") as f:
+            f.write(data)
+
+    def test_undecodable_bytes_in_approvals_are_not_an_approval_and_not_a_crash(self):
+        d = self.task([{"id": "make", "run": "echo v > art", "check": "test -s art"},
+                       {"id": "send", "run": "echo sent >> rs", "check": "test -s rs", "deps": ["art"],
+                        "approval": "required"}])
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.raw(d, "approvals.jsonl", b'{"t": 1, "stage": "se\xc3')
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 4, res.stderr[-300:])
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "rs"), 1)
+
+    def test_undecodable_bytes_in_the_journal_do_not_stop_the_completion_scan(self):
+        d = self.task([{"id": "s", "run": "echo x >> c", "check": "test -s c"}])
+        self.raw(d, "journal.jsonl", b"\xff\xfe not json\n")
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 0, res.stderr[-300:])
+        self.assertNotIn("Traceback", res.stderr)
 
 
 if __name__ == "__main__":

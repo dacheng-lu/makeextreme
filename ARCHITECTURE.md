@@ -83,7 +83,7 @@
 估算未经测量，仅供排序。
 
 - **M0 可行性**（已完成）：`spike/runner.py` 约 130 行 + 11 个探针。
-- **M1 核心**（**代码完成 2026-11-01，待 Sonnet 再审**；提交 `0abc449`、`102f57c`，审计修复见下）：AC5、AC6、AC8 已补；孤儿缺口已闭合；spike 拆成包 `makeextreme/`（`core.py`、`secret_scan.py`、`__main__.py`）。审计前自测（2026-11-01）找出 5 个真缺陷并已修（并发锁 D18、审批阶段失败自动重跑 D17、损坏的 `task.json`、`approvals.jsonl` 里一行损坏、`stages.json` 缺失/非法/任务目录不存在）。**Sonnet 里程碑审计 #1（2026-11-01）：FAIL，4 个 MAJOR + 7 个 MINOR，全部复现**：SIGTERM 落在两个阶段之间会把刚完成的阶段标成 `interrupted`（普通阶段重跑、审批阶段变 `uncertain`）；被中断的普通阶段下次 `run` 不回收子进程；`check` 输出非 UTF-8 让运行器永久崩溃；符号链接依赖只按链接文字哈希。均已修（`tests/test_audit_findings.py`，每条先红后绿），另修 `approve` 双次哈希、记录文件尾行被截断后下一条被粘住、不可读依赖的栈追踪、`atomic_write` 遗留临时文件，补齐 4 个存活变异体的测试，文档漂移已改。现 61 个测试（Python 3.11 与 3.14 均过）+ `tests/mutants.py` 46 个变异体（`python tests/mutants.py all`，约 2 分钟）；spike 用 `python spike/test_m0.py`（11/11）。再审（Sonnet delta）：**待做**。`requesting-code-review` 补丁与 skill `makeextreme-stage-design` 已完成。**未做**：Sonnet 再审通过后才算 M1 完成。
+- **M1 核心**（**代码完成 2026-11-01，待 Sonnet 再审**；提交 `0abc449`、`102f57c`，审计修复见下）：AC5、AC6、AC8 已补；孤儿缺口已闭合；spike 拆成包 `makeextreme/`（`core.py`、`secret_scan.py`、`__main__.py`）。审计前自测（2026-11-01）找出 5 个真缺陷并已修（并发锁 D18、审批阶段失败自动重跑 D17、损坏的 `task.json`、`approvals.jsonl` 里一行损坏、`stages.json` 缺失/非法/任务目录不存在）。**Sonnet 里程碑审计 #1（2026-11-01）：FAIL，4 个 MAJOR + 7 个 MINOR，全部复现**：SIGTERM 落在两个阶段之间会把刚完成的阶段标成 `interrupted`（普通阶段重跑、审批阶段变 `uncertain`）；被中断的普通阶段下次 `run` 不回收子进程；`check` 输出非 UTF-8 让运行器永久崩溃；符号链接依赖只按链接文字哈希。均已修（`tests/test_audit_findings.py`，每条先红后绿），另修 `approve` 双次哈希、记录文件尾行被截断后下一条被粘住、不可读依赖的栈追踪、`atomic_write` 遗留临时文件，补齐 4 个存活变异体的测试，文档漂移已改。**Sonnet 再审 #2（同日）：FAIL，1 个 MAJOR + 7 个 MINOR + 1 个 PLAN**，前 4 个 MAJOR 均确认已修。新的 MAJOR 是我自己的 D17 实现留下的缝：审批阶段失败先以 `failed` 落盘、随后才改 `uncertain`，两次写之间收到 SIGTERM 或 SIGKILL，下一次普通 `run` 会重跑不可逆命令（SIGKILL 的情形在 D17 之前就存在）——现在第一次写盘就是 `uncertain`。其余：`atomic_write` 在 `mkstemp` 之后的信号窗口（现在屏蔽 SIGTERM/SIGINT 直到清理就位）、符号链接文字不是 UTF-8 时崩溃且 `approve` 只显示链接文字（现在链接按"文字 + 目标内容"合成一个哈希）、依赖目录嵌套超过递归上限（现为干净拒绝）、指向同一目录的链接扇出导致指数耗时（现按真实路径记忆化）、运行中依赖变得不可读时任务停在静默的 `running`（现记 `refused`）、记录文件含非 UTF-8 字节时崩溃、`UnreadableDep` 测试靠 root 判断跳过（现用 `/proc/self/mem` 软链，任何 uid 都读不了）、以及三个测试缺口。现 73 个测试（Python 3.11 与 3.14 均过）+ `tests/mutants.py` 58 个变异体（`python tests/mutants.py all`，约 2 分 40 秒）；spike 用 `python spike/test_m0.py`（11/11）。再审 #3（Sonnet delta）：**待做**。`requesting-code-review` 补丁与 skill `makeextreme-stage-design` 已完成。**未做**：Sonnet 再审通过后才算 M1 完成。
 - **M2 宿主**：shell + Hermes 两个 host，AC9。
 - **M3 第一个客户**：视频流水线（AC10）；之后接 `grill-me` cron。
 - **M4 收口**：README、CI、与 Longhaul 钉版本对账。
@@ -99,7 +99,7 @@
 - **Linux 专用**：`/proc/<pid>/stat` 和进程组语义。macOS/Windows 不在 v1.0。
 - **逃过回收的子进程（Sonnet 里程碑审计 E6，已实测）**：回收靠两条线索——环境变量 `MAKEEXTREME_RUN_ID` 和记录下来的进程组（pgid + 启动 tick）。一个阶段若在 `setsid` 之后又 `env -i`，它既不在原进程组、也不带 run id，`reap` 找不到它（审计员用 `setsid env -i sleep 300` 复现）。只清空环境、没有 `setsid` 的阶段能被 pgid 兜住（`test_x3`）。`reap` 读 `environ` 与 `killpg` 之间理论上存在 pid 复用窗口，`pg_start` 校验只保护 pgid 那条线（`test_x2`），环境变量那条线没有。
 - **SIGTERM 后的子进程**：运行器收到 SIGTERM 会给阶段进程组发 SIGTERM 并立刻退出（143）；一个忽略 SIGTERM 的子进程会继续活着，直到下一次 `run` 在重跑之前把它杀掉（`interrupted` 与 `running` 一样会被回收；`InterruptedStageIsReaped`）。这段时间内它可能还在动。
-- **状态与日志是两次写入**：`task.json` 先存、`journal.jsonl` 后记。两者之间崩溃，状态领先于日志一条。没有任何验收标准要求两者同步，也没有测试覆盖这个窗口。
+- **状态与日志是两次写入**：`task.json` 先存、`journal.jsonl` 后记。两者之间崩溃，状态领先于日志一条（例如阶段已 `uncertain` 而 `end` 事件未记）。没有任何验收标准要求两者同步，也没有测试覆盖这个窗口；设计上以 `task.json` 为准，日志只是证据。所有会让**不可逆命令被重跑**的状态，必须在状态文件的**第一次写入**里就是安全状态（D17 的教训）。
 - **`deps` 路径不做限制**：允许 `..` 和绝对路径（哈希任意文件）；不防自己写出来的 stages.json。
 - **目录的 fsync 没做**：`os.replace` 之后不对目录 fsync，断电时最后一次状态保存可能回退一步。F11 写 ≥3.10，实际只测过 3.11 和 3.14。
 
@@ -125,7 +125,7 @@
 - **D16 README 语言**：**已定 = 10D** 英文、中文、德文三语。**风险（我的意见）**：三语是三份要同步的文档；Longhaul 的审计（DOC2）已经发现过"zh/de 缺了一条提示却没有测试抓到"。因此 README 的每个语言段落都必须有测试：存在、且含同一组必备事实（平台、审批威胁模型声明、测量表链接）。
 
 **审计前自测的决定（2026-11-01，我代用户定，可否决）**
-- **D17 不可逆阶段失败 = `uncertain`**：`approval` 阶段退出码非 0，或退出码 0 但 check 不过，**都不再标 `failed`**，而是标 `uncertain`（退出码 5，journal 记原因）；后续普通 `run` 一律拒绝，不重跑；只有 `resolve --retry`（会沿用同一产物哈希下已有的批准重跑一次）或 `resolve --done`（check 必须通过）才放行。原因：它可能在失败之前已经动手（或动了手却没留证据）；旧行为是下一次 `run` 悄悄再执行一次不可逆命令。代价：一次退出码 1 的失败也要多一条 `resolve` 命令。普通阶段不变：`failed`，退出码 2，再跑即重试。
+- **D17 不可逆阶段失败 = `uncertain`**：`approval` 阶段退出码非 0，或退出码 0 但 check 不过，**都不再标 `failed`**，而是标 `uncertain`（退出码 5，journal 记原因；**第一次写盘就是 `uncertain`**——审计 #2 发现先写 `failed` 再改会留下一个被杀就会重跑的窗口）；后续普通 `run` 一律拒绝，不重跑；只有 `resolve --retry`（会沿用同一产物哈希下已有的批准重跑一次）或 `resolve --done`（check 必须通过）才放行。原因：它可能在失败之前已经动手（或动了手却没留证据）；旧行为是下一次 `run` 悄悄再执行一次不可逆命令。代价：一次退出码 1 的失败也要多一条 `resolve` 命令。普通阶段不变：`failed`，退出码 2，再跑即重试。
 - **D18 运行锁 = `flock`**：`<task>/lock` 上的排他 `flock`，由打开的文件描述符持有，进程死亡时内核释放：没有"过期锁"要判断，也没有 pid 复用问题。锁文件**永不删除**（删除会让第二个运行器锁旧 inode、第三个新建文件，重新出现双持锁）；内容只是给拒绝信息用的备注。限制：仅 Linux，且要求任务目录所在文件系统支持 `flock`（NFS 另当别论，未测）。
 - **已知限制（Sonnet 里程碑审计评估后补全）**：审批检查与阶段命令真正读到产物之间有一个毫秒级窗口，产物可在此期间被改；运行器不在阶段结束后重新哈希（对自己会改写自己依赖的阶段会误报，所以没做）。**后果（E7，已实测）**：一个会改写自己 `deps` 的阶段每次 `run` 都会因指纹变化而重跑，AC3 对它不成立；若它是 `approval` 阶段，每次重跑都要重新批准，再批准就再执行一次不可逆命令。`approve` 以前先后哈希两次，显示的哈希可能与绑定的不同，现已改为只哈希一次（`ApproveHashesOnce`）。这与 D10 一致——批准只防意外，不防有意。已完成阶段被跳过时不会重跑它的 check（AC3 要求"什么都不执行"），所以完成后被删掉的产物不会让阶段失效，除非它是声明的 `deps`。
 
