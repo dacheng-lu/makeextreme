@@ -496,5 +496,80 @@ class RecordFilesWithForeignBytes(TaskCase):
         self.assertNotIn("Traceback", res.stderr)
 
 
+class ApprovalIsConsumedByUse(TaskCase):
+    """Audit #3 MAJOR: an approval authorises ONE execution. Changing the artifact away from the approved
+    content and back used to bring the old approval back to life: the irreversible command ran a second
+    time without a new decision."""
+
+    def spec(self):
+        return [{"id": "send", "run": "echo pay >> pay.out", "check": "test -s pay.out", "deps": ["art"],
+                 "approval": "required"}]
+
+    def test_changing_the_artifact_away_and_back_does_not_revive_the_old_approval(self):
+        d = self.task(self.spec(), {"art": "A\n"})
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "pay.out"), 1)
+        self.write(d, "art", "B\n")
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.write(d, "art", "A\n")  # back to exactly what was approved and already released once
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 4, res.stderr)
+        self.assertEqual(self.lines(d, "pay.out"), 1, "the irreversible command ran again on an old approval")
+        self.assertEqual(mx("approve", d, "send").returncode, 0)  # a NEW decision
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "pay.out"), 2)
+
+    def test_an_upstream_stage_that_writes_a_then_b_then_a_does_not_revive_it_either(self):
+        spec = [{"id": "gen", "run": "cat src > art", "check": "test -s art", "deps": ["src"]}] + self.spec()
+        d = self.task(spec, {"src": "A\n"})
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 0)
+        for content in ("B\n", "A\n"):
+            self.write(d, "src", content)
+            res = mx("run", d)
+            self.assertEqual(res.returncode, 4, res.stderr)
+        self.assertEqual(self.lines(d, "pay.out"), 1)
+
+    def test_an_approval_that_was_never_used_still_releases_once_and_only_once(self):
+        d = self.task(self.spec(), {"art": "A\n"})
+        self.assertEqual(mx("approve", d, "send").returncode, 0)  # approved before the first run: allowed
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "pay.out"), 1)
+        self.write(d, "art", "B\n")
+        self.write(d, "art", "A\n")  # unchanged content: the stage is simply done, nothing runs
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "pay.out"), 1)
+
+
+class ResolveIsInterruptible(TaskCase):
+    """Audit #3 MINOR: `resolve` has no signal handler, so SIGTERM at the temp-file window killed it and left the temp file."""
+
+    def test_sigterm_right_after_mkstemp_in_resolve_leaves_no_temp_file(self):
+        d = self.task([{"id": "send", "run": "echo pay >> pay.out; exit 1", "check": "true", "deps": ["art"],
+                        "approval": "required"}], {"art": "A\n"})
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 5)  # uncertain
+        before = sorted(os.listdir(d))
+        code = (
+            "import os, signal, sys\n"
+            "sys.path.insert(0, %r)\n"
+            "from makeextreme import core\n"
+            "real = core.tempfile.mkstemp\n"
+            "def hook(*a, **k):\n"
+            "    made = real(*a, **k)\n"
+            "    os.kill(os.getpid(), signal.SIGTERM)\n"
+            "    return made\n"
+            "core.tempfile.mkstemp = hook\n"
+            "sys.exit(core.resolve(sys.argv[1], 'send', '--retry'))\n" % REPO)
+        res = subprocess.run([sys.executable, "-c", code, d], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 143, res.stderr)
+        self.assertEqual(sorted(os.listdir(d)), before, "a temp file was left behind")
+        self.assertEqual(self.state(d)["stages"]["send"]["status"], "uncertain")
+
+
 if __name__ == "__main__":
     unittest.main()

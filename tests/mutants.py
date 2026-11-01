@@ -40,12 +40,12 @@ mut("C5_fp_ignores_run", CORE, 'doc = {"run": sp["run"],', 'doc = {"run": "",', 
 mut("C6_dir_dep_by_name", CORE, 'one = _path_hash(os.path.join(p, n), stack | {real}, memo)',
     'one = "x"', (FP, "directory"),
     "a directory dep is hashed by file names, not content")
-mut("A1_approval_any_digest", CORE, 'and r.get("digest") == digest:', 'and True:', (APP, "artifact"),
+mut("A1_approval_any_digest", CORE, 'and r.get("digest") == digest\n', 'and True\n', (APP, "artifact"),
     "an approval is not bound to the artifact digest")
 mut("A2_approval_any_stage", CORE, 'isinstance(r, dict) and r.get("stage") == sid and',
     'isinstance(r, dict) and r.get("stage") is not None and', (APP, "stage_id"),
     "an approval is not bound to the stage id")
-mut("A3_no_approval_needed", CORE, '        if sp.get("approval") and not approved(d, sid, fp):', '        if False:',
+mut("A3_no_approval_needed", CORE, '        if sp.get("approval") and not approved(d, sid, fp, s.get("started", 0)):', '        if False:',
     (APP, "no_record"), "an approval stage runs without any approval record")
 mut("A4_crash_reruns", CORE, '        if s["status"] in ("running", "interrupted") and sp.get("approval"):',
     '        if False:', (APP, "never_rerun"), "a crashed irreversible stage is re-run on its own")
@@ -61,8 +61,8 @@ mut("A9_no_deps_accepted", CORE, '        if sp.get("approval") and not deps:', 
     (APP, "without_deps"), "an approval stage without deps is accepted")
 mut("A10_torn_approval_line_crashes", CORE, '            continue  # a line torn by a crash is not an approval (and not a reason to crash)',
     '            raise', (APP, "torn_or_foreign"), "a torn line in approvals.jsonl crashes the runner instead of being ignored")
-mut("A11_nondict_line_crashes", CORE, '        if isinstance(r, dict) and r.get("stage") == sid and r.get("digest") == digest:',
-    '        if r.get("stage") == sid and r.get("digest") == digest:', (APP, "torn_or_foreign"),
+mut("A11_nondict_line_crashes", CORE, '        if (isinstance(r, dict) and r.get("stage") == sid and',
+    '        if (r.get("stage") == sid and', (APP, "torn_or_foreign"),
     "a non-object line in approvals.jsonl crashes the runner")
 mut("R1_resolve_done_unchecked", CORE, '            if chk.returncode != 0:\n                print("refused: the stage\'s check',
     '            if False:\n                print("refused: the stage\'s check', (APP, "resolve_done"),
@@ -160,6 +160,16 @@ mut("N6b_approvals_strict_utf8", CORE, 'with open(approvals_path(d), errors="rep
     (FIND, "RecordFilesWith"), "foreign bytes in approvals.jsonl crash the runner")
 mut("N6c_records_strict_utf8", CORE, 'with open(p, errors="replace") as f:\n            text = f.read()', 'with open(p) as f:\n            text = f.read()',
     (FIND, "RecordFilesWith"), "foreign bytes in journal.jsonl crash the completion scan")
+
+mut("AP1_approval_not_consumed", CORE, 'approved(d, sid, fp, s.get("started", 0))', 'approved(d, sid, fp)',
+    (FIND, "ApprovalIsConsumedByUse"), "an old approval comes back to life when the artifact returns to approved content")
+mut("AP3_start_not_recorded", CORE, 'digest=fp, run_id=run_id,\n                 started=round(time.time(), 3))  # spends the approval that released this run',
+    'digest=fp, run_id=run_id)', (FIND, "ApprovalIsConsumedByUse"), "the start of a stage is not recorded, so nothing is ever spent")
+mut("AP2_retry_keeps_the_spent_approval", CORE, '            s.pop("started", None)  # an explicit retry may use the approval that is on record, once',
+    '            pass', (APP, "resolve_retry"), "resolve --retry cannot use the approval on record, although it is an explicit decision")
+mut("RS1_resolve_not_interruptible", CORE, '    old = signal.signal(signal.SIGTERM, lambda sig, _frame: sys.exit(128 + sig))',
+    '    old = signal.getsignal(signal.SIGTERM)', (FIND, "ResolveIsInterruptible"),
+    "SIGTERM kills resolve on the spot and leaves its temp file")
 
 _controls = {}
 

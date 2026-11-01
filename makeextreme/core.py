@@ -282,7 +282,10 @@ def approvals_path(d):
     return os.path.join(d, "approvals.jsonl")
 
 
-def approved(d, sid, digest):
+def approved(d, sid, digest, since=0):
+    """Is there an approval of exactly this stage and artifact that was written AFTER the stage last
+    started (`since`)? An approval authorises one execution: it is spent when the stage starts, so an
+    artifact that changes away and comes back does not bring an old approval back to life."""
     try:
         with open(approvals_path(d), errors="replace") as f:
             lines = f.read().splitlines()
@@ -293,7 +296,8 @@ def approved(d, sid, digest):
             r = json.loads(x)
         except ValueError:
             continue  # a line torn by a crash is not an approval (and not a reason to crash)
-        if isinstance(r, dict) and r.get("stage") == sid and r.get("digest") == digest:
+        if (isinstance(r, dict) and r.get("stage") == sid and r.get("digest") == digest
+                and isinstance(r.get("t"), (int, float)) and r["t"] > since):
             return True
     return False
 
@@ -343,10 +347,11 @@ def _run(t, d):
             t.log("recovered_from_crash" if s["status"] == "running" else "recovered_from_interrupt", stage=sid)
             for pg in reap(s):
                 t.log("reaped", stage=sid, pgid=pg)
-        if sp.get("approval") and not approved(d, sid, fp):
+        if sp.get("approval") and not approved(d, sid, fp, s.get("started", 0)):
             return t.halt("awaiting_approval", sid, EX_AWAITING, "awaiting_approval", digest=fp)
         run_id = os.urandom(8).hex()
-        s.update(status="running", attempts=s["attempts"] + 1, digest=fp, run_id=run_id)
+        s.update(status="running", attempts=s["attempts"] + 1, digest=fp, run_id=run_id,
+                 started=round(time.time(), 3))  # spends the approval that released this run
         s.pop("pgid", None)
         s.pop("pg_start", None)
         cur["sid"] = sid
@@ -454,8 +459,13 @@ def resolve(d, sid, mode):
             s.update(status="done", digest=fingerprint(d, sp), check_rc=0, check_out=chk.stdout.strip()[:200])
         else:
             s["status"] = "pending"
+            s.pop("started", None)  # an explicit retry may use the approval that is on record, once
         t.state["status"] = "resolved"
         t.save()
         t.log("resolved", stage=sid, mode=mode)
         return 0
-    return _locked(d, go)
+    old = signal.signal(signal.SIGTERM, lambda sig, _frame: sys.exit(128 + sig))
+    try:
+        return _locked(d, go)
+    finally:
+        signal.signal(signal.SIGTERM, old)
