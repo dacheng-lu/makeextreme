@@ -26,7 +26,7 @@ The order is a suggestion, not a plan.
 - A PyPI release, only after the items above and the trademark checks (D15).
 - A read-only command that reports, for each finished stage, whether it is still valid and why. Not built.
 - An expiry for approvals. Not built.
-- A threat model and an interface contract shared with Longhaul (see [Longhaul's roadmap](https://github.com/dacheng-lu/longhaul/blob/main/ROADMAP.md)).
+- A threat model and an interface contract shared with Longhaul. [Longhaul's roadmap](https://github.com/dacheng-lu/longhaul/blob/main/ROADMAP.md) plans a threat model and a host adapter contract of its own and does not mention makeextreme; whether the two meet is undecided.
 
 The last three came from a plan shared on 2026-11-01. Only the output-verification gap in it was measured, and that became 1.1.0.
 
