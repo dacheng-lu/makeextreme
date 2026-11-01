@@ -1,5 +1,5 @@
 """Shared helpers for the makeextreme tests. Standard library only."""
-import hashlib, json, os, subprocess, sys, tempfile, time, unittest
+import hashlib, json, os, signal, subprocess, sys, tempfile, time, unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -19,6 +19,18 @@ def wait_for(path, secs=8):
     end = time.time() + secs
     while time.time() < end:
         if os.path.exists(path):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def gone(pgid, secs=3):
+    """True once no process of the group is left (polls: SIGKILL delivery is not instantaneous)."""
+    end = time.time() + secs
+    while time.time() < end:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
             return True
         time.sleep(0.05)
     return False

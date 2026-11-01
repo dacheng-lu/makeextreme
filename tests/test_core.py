@@ -1,7 +1,7 @@
 """AC1-AC4, AC7: the M0 acceptance probes, ported to the package CLI."""
 import json, os, signal, subprocess, time, unittest
 
-from support import TaskCase, mx, mx_start, wait_for
+from support import TaskCase, gone, mx, mx_start, wait_for
 
 S3 = [
     {"id": "s1", "run": "echo x >> c1", "check": "test -s c1"},
@@ -48,8 +48,10 @@ class Core(TaskCase):
         d = self.task([{"id": "s", "run": "echo go >> c; sleep 3; echo done >> d", "check": "test -s d"}])
         r = mx_start("run", d)
         self.assertTrue(wait_for(os.path.join(d, "c")))
+        pgid = self.state(d)["stages"]["s"]["pgid"]
         r.send_signal(signal.SIGTERM)
         self.assertEqual(r.wait(), 143)
+        self.assertTrue(gone(pgid), "SIGTERM must stop the stage's process group, not wait for the next run")
         self.assertEqual(self.state(d)["status"], "interrupted")
         self.assertIn("interrupted", self.events(d))
         self.assertEqual(mx("run", d).returncode, 0)

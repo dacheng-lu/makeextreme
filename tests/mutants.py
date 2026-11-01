@@ -37,8 +37,8 @@ mut("C4_fp_ignores_check", CORE, '"check": sp["check"], "deps": deps}', '"check"
     (FP, None), "the stage fingerprint ignores the check command")
 mut("C5_fp_ignores_run", CORE, 'doc = {"run": sp["run"],', 'doc = {"run": "",', (FP, None),
     "the stage fingerprint ignores the run command")
-mut("C6_dir_dep_by_name", CORE, '_file_hash(fp) if os.path.isfile(fp) else "other")',
-    '"file" if os.path.isfile(fp) else "other")', (FP, "directory"),
+mut("C6_dir_dep_by_name", CORE, 'one = _path_hash(os.path.join(p, n), stack | {real})',
+    'one = "x"', (FP, "directory"),
     "a directory dep is hashed by file names, not content")
 mut("A1_approval_any_digest", CORE, 'and r.get("digest") == digest:', 'and True:', (APP, "artifact"),
     "an approval is not bound to the artifact digest")
@@ -93,6 +93,46 @@ mut("D4_lock_file_beside_bad_spec", CORE, '        load_spec(d)  # refuse a bad 
     (CORE_T, "clean_refusal"), "a lock file is created next to a task that is refused anyway")
 mut("V1_duplicate_ids", CORE, 'if not (isinstance(sid, str) and sid) or sid in seen:', 'if not (isinstance(sid, str) and sid):',
     (CORE_T, "stage_ids"), "duplicate stage ids are accepted")
+
+FIND = "test_audit_findings.py"
+mut("E1_signal_undoes_done_stage", CORE,
+    'running = cur["sid"] if cur["sid"] and t.st(cur["sid"])["status"] == "running" else None',
+    'running = cur["sid"]', (FIND, "SigtermBetweenStages"),
+    "a SIGTERM between two stages marks the stage that just finished as interrupted")
+mut("E2_interrupted_not_reaped", CORE,
+    'if s["status"] in ("running", "interrupted"):  # the previous runner died or was stopped mid-stage',
+    'if s["status"] == "running":  # the previous runner died or was stopped mid-stage',
+    (FIND, "InterruptedStageIsReaped"), "what an interrupted ordinary stage left behind is not killed before the rerun")
+mut("E3a_check_utf8_in_run", CORE, 'text=True, errors="replace")\n        ok =', 'text=True)\n        ok =',
+    (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes the runner")
+mut("E3b_check_utf8_in_resolve", CORE, 'text=True, errors="replace")\n            if chk.returncode != 0:',
+    'text=True)\n            if chk.returncode != 0:', (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes resolve --done")
+mut("E4a_symlink_by_text_only", CORE, 'inner = _path_hash(target, stack) if os.path.exists(target) else "dangling"',
+    'inner = ""', (FIND, "SymlinkDeps"), "a symlink is hashed by its text, not by what it points to")
+mut("E4b_symlink_cycle_unguarded", CORE, '        if real in stack:\n            return "cycle"',
+    '        if False:\n            return "cycle"', (FIND, "SymlinkDeps"), "a symlink cycle recurses without end")
+mut("E4c_dangling_link_is_an_artifact", CORE, '    if os.path.islink(p) and not os.path.exists(p):\n        return "missing"',
+    '    if False:\n        return "missing"', (FIND, "SymlinkDeps"), "a dangling symlink can be approved as an artifact")
+mut("E5_torn_tail_glues_next_entry", CORE, 'torn = f.read(1) != b"\\n"', 'torn = False', (FIND, "TornTails"),
+    "an entry appended after a torn line is glued to the fragment and lost")
+mut("E8a_unreadable_file_traceback", CORE, '            return _file_hash(p)\n        except OSError as e:',
+    '            return _file_hash(p)\n        except KeyError as e:', (FIND, "UnreadableDep"),
+    "an unreadable dep file escapes as a traceback")
+mut("E8b_spec_error_escapes_run", CORE, '            return fn(Task(d))\n        except SpecError as e:',
+    '            return fn(Task(d))\n        except KeyError as e:', (FIND, "UnreadableDep"),
+    "a SpecError raised while running escapes as a traceback")
+mut("E9_approve_hashes_twice", CORE, 'digest = fingerprint(d, sp, hashes)', 'digest = fingerprint(d, sp)',
+    (FIND, "ApproveHashesOnce"), "approve binds a second hash instead of the one it showed")
+mut("X1_approvals_not_scanned", CORE, '("task.json", "journal.jsonl", "approvals.jsonl")', '("task.json", "journal.jsonl")',
+    (FIND, "x1"), "approvals.jsonl is not scanned for credentials")
+mut("X2_pgid_reuse_guard_off", CORE, 'if pg and pg not in killed and starttime(pg) == s.get("pg_start"):',
+    'if pg and pg not in killed:', (FIND, "x2"), "a recorded pgid is killed even when the pid was reused")
+mut("X3_pgid_fallback_off", CORE, 'if pg and pg not in killed and starttime(pg) == s.get("pg_start"):', 'if False:',
+    (FIND, "x3"), "a stage that cleared its environment escapes the reaper")
+mut("X4_attempts_constant", CORE, 's.update(status="running", attempts=s["attempts"] + 1,', 's.update(status="running", attempts=1,',
+    (FIND, "x4"), "the attempts counter never counts")
+mut("W1_atomic_write_leaves_temp", CORE, '            os.unlink(tmp)', '            pass', (FIND, "AtomicWriteCleanup"),
+    "a failed atomic write leaves its temp file behind")
 
 _controls = {}
 

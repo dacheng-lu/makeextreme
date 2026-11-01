@@ -2,8 +2,10 @@
 
 Exit codes of `run`: 0 complete, 2 a stage failed, 3 locked by a live runner, 4 waiting for
 approval, 5 an irreversible stage crashed or failed and needs `resolve`, 6 completion refused
-(secret-shaped value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json or an
-unreadable task.json.
+(secret-shaped value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json, an
+unreadable task.json or dependency, or a missing task directory, 130/143 stopped by SIGINT/SIGTERM.
+`approve` and `resolve` use 0 for done, 1 for a refusal (not an approval stage, artifact missing,
+stage not uncertain, check does not pass), 64 as above.
 """
 import fcntl, getpass, hashlib, json, os, signal, subprocess, sys, tempfile, time
 
@@ -19,11 +21,32 @@ class SpecError(Exception):
 
 def atomic_write(path, obj):
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
-    with os.fdopen(fd, "w") as f:
-        json.dump(obj, f, indent=1)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(obj, f, indent=1)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:  # incl. the SystemExit of the signal handler: leave no stray temp file
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def append_line(path, line):
+    """Append one record. A crash can leave the file without its final newline: end that fragment
+    first, in the same write, so the new record is not glued to it and lost."""
+    with open(path, "a+b") as f:
+        end = f.seek(0, os.SEEK_END)
+        torn = False
+        if end:
+            f.seek(end - 1)
+            torn = f.read(1) != b"\n"
+        f.write((b"\n" if torn else b"") + line.encode() + b"\n")
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, path)
 
 
 def starttime(pid):
@@ -43,29 +66,48 @@ def _file_hash(path):
     return h.hexdigest()
 
 
-def dep_hash(base, rel):
-    """Content hash of one declared dep: a file, a directory tree, or 'missing'."""
-    p = os.path.join(base, rel)
+def _path_hash(p, stack):
+    """Content hash of one entry. A symlink counts by its text AND by what it points to now; a
+    directory by its entries' names and hashes; `stack` holds the real directories on the way down
+    (a link back into one of them is a cycle, not an endless walk)."""
     if os.path.islink(p):
-        return "link:" + os.readlink(p)
+        target = os.path.realpath(p)
+        inner = _path_hash(target, stack) if os.path.exists(target) else "dangling"
+        return "link:" + os.readlink(p) + ">" + inner
     if os.path.isdir(p):
+        real = os.path.realpath(p)
+        if real in stack:
+            return "cycle"
+        try:
+            names = sorted(os.listdir(p))
+        except OSError as e:
+            raise SpecError(f"cannot read dependency {p}: {e.strerror or e}")
         h = hashlib.sha256()
-        for root, dirs, files in os.walk(p):
-            dirs.sort()
-            for n in sorted(files):
-                fp = os.path.join(root, n)
-                one = "link:" + os.readlink(fp) if os.path.islink(fp) else (
-                    _file_hash(fp) if os.path.isfile(fp) else "other")
-                h.update(os.path.relpath(fp, p).encode() + b"\0" + one.encode() + b"\n")
+        for n in names:
+            one = _path_hash(os.path.join(p, n), stack | {real})
+            h.update(n.encode("utf-8", "surrogateescape") + b"\0" + one.encode() + b"\n")
         return h.hexdigest()
     if os.path.isfile(p):
-        return _file_hash(p)
-    return "missing" if not os.path.exists(p) else "other"
+        try:
+            return _file_hash(p)
+        except OSError as e:
+            raise SpecError(f"cannot read dependency {p}: {e.strerror or e}")
+    return "missing" if not os.path.lexists(p) else "other"
 
 
-def fingerprint(d, sp):
-    """A stage's identity: its command, its check and the content of its declared deps."""
-    deps = {x: dep_hash(d, x) for x in sp.get("deps", [])}
+def dep_hash(base, rel):
+    """Content hash of one declared dep: a file, a directory tree, a symlink (and its target), or
+    'missing' (also for a symlink that points nowhere: that is no artifact)."""
+    p = os.path.join(base, rel)
+    if os.path.islink(p) and not os.path.exists(p):
+        return "missing"
+    return _path_hash(p, frozenset())
+
+
+def fingerprint(d, sp, hashes=None):
+    """A stage's identity: its command, its check and the content of its declared deps.
+    `hashes` lets a caller that already hashed the deps (approve) bind exactly what it showed."""
+    deps = hashes if hashes is not None else {x: dep_hash(d, x) for x in sp.get("deps", [])}
     doc = {"run": sp["run"], "check": sp["check"], "deps": deps}
     return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
 
@@ -130,10 +172,8 @@ class Task:
         atomic_write(self.sp, self.state)
 
     def log(self, ev, **kw):
-        with open(os.path.join(self.d, "journal.jsonl"), "a") as f:
-            f.write(json.dumps({"t": round(time.time(), 3), "ev": ev, **kw}) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        append_line(os.path.join(self.d, "journal.jsonl"),
+                    json.dumps({"t": round(time.time(), 3), "ev": ev, **kw}))
 
     def st(self, sid):
         return self.state["stages"].setdefault(sid, {"status": "pending", "attempts": 0})
@@ -249,11 +289,12 @@ def _run(t, d):
                 os.killpg(p.pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
-        if cur["sid"]:
-            t.st(cur["sid"])["status"] = "interrupted"
+        running = cur["sid"] if cur["sid"] and t.st(cur["sid"])["status"] == "running" else None
+        if running:  # a stage that already ended (done/failed) must not be undone by a late signal
+            t.st(running)["status"] = "interrupted"
         t.state["status"] = "interrupted"
         t.save()
-        t.log("interrupted", stage=cur["sid"], sig=sig)
+        t.log("interrupted", stage=running, sig=sig)
         sys.exit(128 + sig)
 
     signal.signal(signal.SIGTERM, on_signal)
@@ -273,8 +314,8 @@ def _run(t, d):
             return t.halt("uncertain", sid, EX_UNCERTAIN, "uncertain")
         if s["status"] == "uncertain":
             return t.halt("uncertain", sid, EX_UNCERTAIN, "uncertain")
-        if s["status"] == "running":  # the previous runner died mid-stage
-            t.log("recovered_from_crash", stage=sid)
+        if s["status"] in ("running", "interrupted"):  # the previous runner died or was stopped mid-stage
+            t.log("recovered_from_crash" if s["status"] == "running" else "recovered_from_interrupt", stage=sid)
             for pg in reap(s):
                 t.log("reaped", stage=sid, pgid=pg)
         if sp.get("approval") and not approved(d, sid, fp):
@@ -293,7 +334,7 @@ def _run(t, d):
         s.update(pgid=proc.pid, pg_start=starttime(proc.pid))
         t.save()
         rc = proc.wait()
-        chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True)
+        chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True, errors="replace")
         ok = rc == 0 and chk.returncode == 0  # exit 0 alone is never "done"
         s.update(status="done" if ok else "failed", rc=rc, check_rc=chk.returncode,
                  check_out=chk.stdout.strip()[:200])
@@ -332,11 +373,10 @@ def _locked(d, fn):
     lock = acquire(d)
     try:
         try:
-            t = Task(d)
+            return fn(Task(d))
         except SpecError as e:
             print(f"refused: {e}", file=sys.stderr)
             return EX_SPEC
-        return fn(t)
     finally:
         os.close(lock)
 
@@ -350,24 +390,21 @@ def approve(d, sid):
     approvals.jsonl; the runner only reads it. (It cannot tell who typed it: see ARCHITECTURE D10.)"""
     try:
         t = Task(d)
+        sp = next((x for x in t.spec if x["id"] == sid), None)
+        if sp is None or not sp.get("approval"):
+            print(f"refused: {sid!r} is not an approval stage of this task", file=sys.stderr)
+            return 1
+        hashes = {x: dep_hash(d, x) for x in sp["deps"]}  # hashed once: what is shown is what is bound
+        if "missing" in hashes.values():
+            print("refused: the artifact does not exist yet: "
+                  + ", ".join(k for k, v in hashes.items() if v == "missing"), file=sys.stderr)
+            return 1
+        digest = fingerprint(d, sp, hashes)
     except SpecError as e:
         print(f"refused: {e}", file=sys.stderr)
         return EX_SPEC
-    sp = next((x for x in t.spec if x["id"] == sid), None)
-    if sp is None or not sp.get("approval"):
-        print(f"refused: {sid!r} is not an approval stage of this task", file=sys.stderr)
-        return 1
-    hashes = {x: dep_hash(d, x) for x in sp["deps"]}
-    if "missing" in hashes.values():
-        print("refused: the artifact does not exist yet: "
-              + ", ".join(k for k, v in hashes.items() if v == "missing"), file=sys.stderr)
-        return 1
-    digest = fingerprint(d, sp)
-    with open(approvals_path(d), "a") as f:
-        f.write(json.dumps({"t": round(time.time(), 3), "stage": sid, "digest": digest,
-                            "by": getpass.getuser()}) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+    append_line(approvals_path(d), json.dumps({"t": round(time.time(), 3), "stage": sid, "digest": digest,
+                                               "by": getpass.getuser()}))
     print(f"approved {sid} @ {digest[:12]}")
     for k, v in hashes.items():
         print(f"  {k}  {v[:12]}")
@@ -383,7 +420,7 @@ def resolve(d, sid, mode):
             print(f"refused: {sid!r} is not uncertain", file=sys.stderr)
             return 1
         if mode == "--done":
-            chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True)
+            chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True, errors="replace")
             if chk.returncode != 0:
                 print("refused: the stage's check does not pass, so it cannot be marked done", file=sys.stderr)
                 return 1

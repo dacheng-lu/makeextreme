@@ -1,18 +1,7 @@
 """AC6 (approval bound to the artifact hash), the 'uncertain' state, and the orphan gap."""
 import json, os, signal, time, unittest
 
-from support import TaskCase, mx, mx_start, wait_for
-
-def gone(pgid, secs=3):
-    end = time.time() + secs
-    while time.time() < end:
-        try:
-            os.killpg(pgid, 0)
-        except ProcessLookupError:
-            return True
-        time.sleep(0.05)
-    return False
-
+from support import TaskCase, gone, mx, mx_start, wait_for
 
 MAKE = {"id": "make", "run": "echo made >> rm; echo report > artifact.txt", "check": "test -s artifact.txt"}
 
