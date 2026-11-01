@@ -304,6 +304,37 @@ mut("V8_dep_inside_own_output_accepted", CORE, 'if _inside(a, b) or _inside(b, a
 mut("V9_paths_not_checked_at_load", CORE, '        validate_spec(spec, d)\n', '        validate_spec(spec)\n', (OVL, "record_files"),
     "load_spec forgets to pass the task directory, so no path is checked")
 
+# audit ladder example (examples/audit_ladder)
+LADDER_T, SLICE_T = "test_audit_ladder.py", "test_slice_diff.py"
+LAD, NEWT, SLC = "examples/audit_ladder/bin/audit_ladder.py", "examples/audit_ladder/new_task.py", "examples/audit_ladder/bin/slice_diff.py"
+mut("L1_red_suite_does_not_stop_the_ladder", LAD, 'if rc != 0:\n        return fail("the suite is red', 'if False:\n        return fail("the suite is red', (LADDER_T, "red_suite"),
+    "a red suite no longer stops the ladder before the first model call")
+mut("L2_rules_not_first_in_the_cheap_prompt", LAD, 'prompt = RULES_CHEAP + "\\n" + scope + "\\n## Pack\\n" + pack', 'prompt = scope + "\\n" + RULES_CHEAP + "\\n## Pack\\n" + pack',
+    (LADDER_T, "fixed_rules"), "the stable prefix is no longer first")
+mut("L3_two_verdicts_accepted", LAD, 'len(verdicts) != 1 or len(closes) > 1', 'len(verdicts) < 1 or len(closes) > 1', (LADDER_T, "two_verdicts"),
+    "a report with two verdicts is accepted")
+mut("L4_replay_without_evidence_counts", LAD, ' or not str(r.get("evidence", "")).strip()', '', (LADDER_T, "without_evidence"), "a replay with empty evidence counts")
+mut("L5_confirmed_major_does_not_block", LAD, 'if f["severity"] in block:', 'if False:', (LADDER_T, "confirmed_major"), "a confirmed MAJOR no longer blocks the expensive stage")
+mut("L6_final_prompt_carries_the_cheap_transcript", LAD, 'text = "\\n\\n".join(parts) + "\\n"\n    if len(text)', 'text = "\\n\\n".join(parts) + "\\n" + open("cheap_report.txt", encoding="utf-8").read()\n    if len(text)',
+    (LADDER_T, "none_of_the_cheap_transcript"), "the cheap model's whole report reaches the final prompt")
+mut("L7_final_prompt_size_cap_ignored", LAD, 'if len(text) > brief.get("final_max_chars", 12000):', 'if False:', (LADDER_T, "oversized"), "the final prompt can grow without limit")
+mut("L8_final_stage_needs_no_approval", NEWT, ', "approval": "required"}', '}', (LADDER_T, "only_one_that_needs_approval"), "the expensive stage runs without a human")
+mut("L9_approval_not_bound_to_the_prompt", NEWT, '"deps": ["final_prompt.md", "audit.json", "final_cmd.sh"]', '"deps": ["audit.json", "final_cmd.sh"]', (LADDER_T, "approval"),
+    "an approval survives a change of the final prompt")
+mut("L10_unclosed_block_rejected", LAD, 'else:\n        body = text[start:verdicts[0].start()]', 'else:\n        return None', (LADDER_T, "forgot_to_close"), "a block the model forgot to close costs the whole audit")
+mut("L11_replay_statuses_swapped", LAD, 'if r["status"] == "not_reproduced":', 'if r["status"] != "not_reproduced":', (LADDER_T, "confirmed_minor"), "confirmed and not-reproduced findings are swapped")
+mut("L12_model_failure_ignored_when_it_printed_something", LAD, 'if r.returncode != 0:\n        return fail("the model command failed', 'if False:\n        return fail("the model command failed', (LADDER_T, "fails"),
+    "a model command that printed a partial report and then failed is accepted")
+mut("L13_prompt_variables_not_passed", LAD, 'AUDIT_PROMPT=os.path.abspath(prompt_path), ', '', (LADDER_T, "clean_audit"), "the model command is not told where its prompt is")
+mut("L14_suite_run_in_the_working_tree", LAD, 'cwd=tmp, capture_output=True, text=True, env=env, timeout=cfg.get("suite_timeout", 900)', 'cwd=sc["repo"], capture_output=True, text=True, env=env, timeout=cfg.get("suite_timeout", 900)',
+    (LADDER_T, "committed_head"), "tier0 judges uncommitted files instead of the committed head")
+mut("S1_outermost_function_wins", SLC, "(b - a) < (best[2] - best[1])", "(b - a) > (best[2] - best[1])", (SLICE_T, "nested"), "an outer function wins over the inner one that changed")
+mut("S2_new_file_has_no_range", SLC, 'ranges = [(1, max(len(lines), 1))]', 'ranges = []', (SLICE_T, "new_file"), "a new file contributes nothing")
+mut("S3_attribute_calls_ignored", SLC, "f.attr if isinstance(f, ast.Attribute) else None", "None", (SLICE_T, "caller"), "x.f() calls are not found")
+mut("S4_changed_function_listed_as_caller", SLC, 'if hit and qn.split(".")[-1] not in simple:', "if hit:", (SLICE_T, "caller"), "a function already in the pack is listed as a caller")
+mut("S5_tests_matched_without_word_boundary", SLC, 'r"\\b%s\\b" % re.escape(n)', 're.escape(n)', (SLICE_T, "tests_that_mention"), "any test file matches")
+mut("S6_max_chars_ignored", SLC, "if max_chars is not None and sum", "if False and sum", (SLICE_T, "max_chars"), "the pack ignores its size cap")
+
 RM_T = "test_roadmap.py"
 mut("RM1_roadmap_lacks_the_current_version", "ROADMAP.md", "- **1.1.1** (2026-11-01):", "- **1.0.9** (2026-11-01):",
     (RM_T, "current_version"), "the roadmap does not list the version the code has as released")
