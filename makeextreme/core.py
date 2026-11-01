@@ -93,15 +93,28 @@ def validate_spec(spec):
             raise SpecError(f"stage {sid}: an approval stage must declare the artifact it approves in 'deps'")
 
 
+def load_spec(d):
+    """The task's stages, or a SpecError that says what is wrong (nothing is created in `d`)."""
+    if not os.path.isdir(d):
+        raise SpecError(f"task directory does not exist: {d}")
+    try:
+        with open(os.path.join(d, "stages.json")) as f:
+            spec = json.load(f)
+    except OSError as e:
+        raise SpecError(f"invalid stages.json: cannot read it ({e.strerror})")
+    except ValueError as e:
+        raise SpecError(f"invalid stages.json: not valid JSON ({e})")
+    try:
+        validate_spec(spec)
+    except SpecError as e:
+        raise SpecError(f"invalid stages.json: {e}")
+    return spec
+
+
 class Task:
     def __init__(self, d):
         self.d = d
-        with open(os.path.join(d, "stages.json")) as f:
-            self.spec = json.load(f)
-        try:
-            validate_spec(self.spec)
-        except SpecError as e:
-            raise SpecError(f"invalid stages.json: {e}")
+        self.spec = load_spec(d)
         self.sp = os.path.join(d, "task.json")
         if os.path.exists(self.sp):
             try:
@@ -213,10 +226,17 @@ def approvals_path(d):
 def approved(d, sid, digest):
     try:
         with open(approvals_path(d)) as f:
-            return any((r := json.loads(x)).get("stage") == sid and r.get("digest") == digest
-                       for x in f if x.strip())
+            lines = f.read().splitlines()
     except OSError:
         return False
+    for x in lines:
+        try:
+            r = json.loads(x)
+        except ValueError:
+            continue  # a line torn by a crash is not an approval (and not a reason to crash)
+        if isinstance(r, dict) and r.get("stage") == sid and r.get("digest") == digest:
+            return True
+    return False
 
 
 def _run(t, d):
@@ -304,6 +324,11 @@ def _run(t, d):
 
 
 def _locked(d, fn):
+    try:
+        load_spec(d)  # refuse a bad task before the lock file is created next to it
+    except SpecError as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return EX_SPEC
     lock = acquire(d)
     try:
         try:

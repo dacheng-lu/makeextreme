@@ -85,6 +85,24 @@ class Core(TaskCase):
             self.assertNotIn("Traceback", res.stderr, label)
             self.assertEqual(self.lines(d, "c"), 0, label)
 
+    def test_a_missing_or_unreadable_stages_json_or_task_dir_is_a_clean_refusal_for_every_command(self):
+        import tempfile
+        broken = tempfile.TemporaryDirectory(prefix="mx-")
+        self.addCleanup(broken.cleanup)
+        self.write(broken.name, "stages.json", '{"id": ')
+        empty = tempfile.TemporaryDirectory(prefix="mx-")  # no stages.json at all
+        self.addCleanup(empty.cleanup)
+        cases = {"invalid json": (broken.name, "stages.json"), "missing stages.json": (empty.name, "stages.json"),
+                 "missing task dir": (os.path.join(empty.name, "no", "such", "dir"), "task directory")}
+        for label, (d, word) in cases.items():
+            for cmd in (("run", d), ("approve", d, "x"), ("resolve", d, "x", "--retry")):
+                res = mx(*cmd)
+                self.assertEqual(res.returncode, 64, (label, cmd[0], res.stderr))
+                self.assertIn(word, res.stderr, (label, cmd[0]))
+                self.assertNotIn("Traceback", res.stderr, (label, cmd[0]))
+        self.assertEqual(os.listdir(broken.name), ["stages.json"])  # nothing created next to a bad spec
+        self.assertEqual(os.listdir(empty.name), [])
+
     def test_a_damaged_task_json_is_refused_cleanly_and_left_alone(self):
         for damaged in ("", '{"status": "runn'):
             d = self.task([{"id": "s", "run": "echo ok >> c", "check": "test -s c"}])

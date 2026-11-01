@@ -83,7 +83,7 @@
 估算未经测量，仅供排序。
 
 - **M0 可行性**（已完成）：`spike/runner.py` 约 130 行 + 11 个探针。
-- **M1 核心**（**已完成 2026-11-01**，提交 `0abc449`、`102f57c`）：AC5、AC6、AC8 已补；孤儿缺口已闭合；spike 拆成包 `makeextreme/`（`core.py`、`secret_scan.py`、`__main__.py`）。审计前自测（2026-11-01）又找出 3 个真缺陷并已修（并发锁 D18、审批阶段失败自动重跑 D17、损坏的 `task.json` 抛栈追踪），并补上 4 个变异体暴露的测试缺口；现 38 个测试 + `tests/mutants.py` 25 个变异体（`python tests/mutants.py all`，约 2 分钟）；`spike/test_m0.py` 仍 11/11。`requesting-code-review` 补丁与 skill `makeextreme-stage-design` 已完成。**未做**：独立审计（D5：Sonnet 里程碑审计，已派）。
+- **M1 核心**（**已完成 2026-11-01**，提交 `0abc449`、`102f57c`）：AC5、AC6、AC8 已补；孤儿缺口已闭合；spike 拆成包 `makeextreme/`（`core.py`、`secret_scan.py`、`__main__.py`）。审计前自测（2026-11-01）又找出 5 个真缺陷并已修（并发锁 D18、审批阶段失败自动重跑 D17、损坏的 `task.json`、`approvals.jsonl` 里一行损坏、`stages.json` 缺失/非法/任务目录不存在——后三者原先都是栈追踪），并补上 4 个变异体暴露的测试缺口；现 40 个测试（Python 3.11 与 3.14 均过）+ `tests/mutants.py` 30 个变异体（`python tests/mutants.py all`，约 100 秒）；`spike/test_m0.py` 仍 11/11。`requesting-code-review` 补丁与 skill `makeextreme-stage-design` 已完成。**未做**：独立审计（D5：Sonnet 里程碑审计，已派）。
 - **M2 宿主**：shell + Hermes 两个 host，AC9。
 - **M3 第一个客户**：视频流水线（AC10）；之后接 `grill-me` cron。
 - **M4 收口**：README、CI、与 Longhaul 钉版本对账。

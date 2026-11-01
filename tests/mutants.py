@@ -40,10 +40,10 @@ mut("C5_fp_ignores_run", CORE, 'doc = {"run": sp["run"],', 'doc = {"run": "",', 
 mut("C6_dir_dep_by_name", CORE, '_file_hash(fp) if os.path.isfile(fp) else "other")',
     '"file" if os.path.isfile(fp) else "other")', (FP, "directory"),
     "a directory dep is hashed by file names, not content")
-mut("A1_approval_any_digest", CORE, 'and r.get("digest") == digest', 'and True', (APP, "artifact"),
+mut("A1_approval_any_digest", CORE, 'and r.get("digest") == digest:', 'and True:', (APP, "artifact"),
     "an approval is not bound to the artifact digest")
-mut("A2_approval_any_stage", CORE, '(r := json.loads(x)).get("stage") == sid and',
-    '(r := json.loads(x)).get("stage") is not None and', (APP, "stage_id"),
+mut("A2_approval_any_stage", CORE, 'isinstance(r, dict) and r.get("stage") == sid and',
+    'isinstance(r, dict) and r.get("stage") is not None and', (APP, "stage_id"),
     "an approval is not bound to the stage id")
 mut("A3_no_approval_needed", CORE, '        if sp.get("approval") and not approved(d, sid, fp):', '        if False:',
     (APP, "no_record"), "an approval stage runs without any approval record")
@@ -59,6 +59,11 @@ mut("A8_approve_ordinary_stage", CORE, '    if sp is None or not sp.get("approva
     (APP, "cannot_bind"), "approve accepts a stage that has no approval")
 mut("A9_no_deps_accepted", CORE, '        if sp.get("approval") and not deps:', '        if False:',
     (APP, "without_deps"), "an approval stage without deps is accepted")
+mut("A10_torn_approval_line_crashes", CORE, '            continue  # a line torn by a crash is not an approval (and not a reason to crash)',
+    '            raise', (APP, "torn_or_foreign"), "a torn line in approvals.jsonl crashes the runner instead of being ignored")
+mut("A11_nondict_line_crashes", CORE, '        if isinstance(r, dict) and r.get("stage") == sid and r.get("digest") == digest:',
+    '        if r.get("stage") == sid and r.get("digest") == digest:', (APP, "torn_or_foreign"),
+    "a non-object line in approvals.jsonl crashes the runner")
 mut("R1_resolve_done_unchecked", CORE, '            if chk.returncode != 0:\n                print("refused: the stage\'s check',
     '            if False:\n                print("refused: the stage\'s check', (APP, "resolve_done"),
     "resolve --done does not require the check to pass")
@@ -79,6 +84,13 @@ mut("L2_no_lock", CORE, '        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\
 mut("D1_damaged_state_traceback", CORE, '            except ValueError as e:\n                raise SpecError(f"task.json',
     '            except KeyError as e:\n                raise SpecError(f"task.json', (CORE_T, "damaged"),
     "a damaged task.json escapes as a traceback")
+mut("D2_invalid_json_traceback", CORE, '    except ValueError as e:\n        raise SpecError(f"invalid stages.json: not valid JSON',
+    '    except KeyError as e:\n        raise SpecError(f"invalid stages.json: not valid JSON', (CORE_T, "clean_refusal"),
+    "an invalid stages.json escapes as a traceback")
+mut("D3_missing_dir_traceback", CORE, '    if not os.path.isdir(d):\n        raise SpecError(f"task directory', '    if False:\n        raise SpecError(f"task directory',
+    (CORE_T, "clean_refusal"), "a missing task directory escapes as a traceback")
+mut("D4_lock_file_beside_bad_spec", CORE, '        load_spec(d)  # refuse a bad task before the lock file is created next to it', '        pass',
+    (CORE_T, "clean_refusal"), "a lock file is created next to a task that is refused anyway")
 mut("V1_duplicate_ids", CORE, 'if not (isinstance(sid, str) and sid) or sid in seen:', 'if not (isinstance(sid, str) and sid):',
     (CORE_T, "stage_ids"), "duplicate stage ids are accepted")
 

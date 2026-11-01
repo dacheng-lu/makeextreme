@@ -61,6 +61,23 @@ class Approval(TaskCase):
         self.assertEqual(mx("run", d).returncode, 0)
         self.assertEqual(self.lines(d, "rs"), 2)
 
+    def test_a_torn_or_foreign_line_in_approvals_is_not_an_approval_and_not_a_crash(self):
+        # a crash during `approve` can leave half a line; anything unreadable is simply not an approval
+        d = self.task([MAKE, send()])
+        self.assertEqual(mx("run", d).returncode, 4)
+        for junk in ('{"t": 1.5, "stage": "sen', "garbage\n", "[]\n", "1\n", "null\n", "\n"):
+            self.write(d, "approvals.jsonl", junk)
+            res = mx("run", d)
+            self.assertEqual(res.returncode, 4, (junk, res.stderr))  # still waiting, no traceback
+            self.assertNotIn("Traceback", res.stderr, junk)
+            self.assertEqual(self.lines(d, "rs"), 0)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)  # a real approval after the junk
+        with open(os.path.join(d, "approvals.jsonl")) as f:
+            real = f.read()
+        self.write(d, "approvals.jsonl", "garbage\n[]\n" + real)  # junk BEFORE the valid line
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "rs"), 1)
+
     def test_an_approval_is_bound_to_its_stage_id(self):
         d = self.task([MAKE, send("send1"), send("send2")])  # identical definitions, different ids
         mx("run", d)
