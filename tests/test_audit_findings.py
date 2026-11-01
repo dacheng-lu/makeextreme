@@ -544,6 +544,113 @@ class ApprovalIsConsumedByUse(TaskCase):
         self.assertEqual(self.lines(d, "pay.out"), 1)
 
 
+class RetryIsTiedToTheFailedRun(TaskCase):
+    """Audit #4 MAJOR: `resolve --retry` used to forget when the stage last started, which brought EVERY
+    spent approval back, for other artifact contents too. A retry is a decision about the run that
+    failed, not an amnesty: it covers that artifact once and nothing else."""
+
+    def spec(self):  # fails for any content but A
+        return [{"id": "send", "run": "cat art >> pay.out; grep -q A art", "check": "test -s pay.out",
+                 "deps": ["art"], "approval": "required"}]
+
+    def released_a_then_failed_on_b(self):
+        d = self.task(self.spec(), {"art": "A\n"})
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 0)  # A released once
+        self.write(d, "art", "B\n")
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 5)  # B failed: uncertain
+        self.assertEqual(self.lines(d, "pay.out"), 2)
+        return d
+
+    def test_a_retry_does_not_bring_back_an_approval_of_other_content(self):
+        d = self.released_a_then_failed_on_b()
+        self.assertEqual(mx("resolve", d, "send", "--retry").returncode, 0)
+        self.write(d, "art", "A\n")  # back to the content that was approved and already released
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 4, res.stderr)
+        self.assertEqual(self.lines(d, "pay.out"), 2, "A ran a second time on a spent approval")
+
+    def test_a_retry_covers_the_artifact_that_failed_exactly_once(self):
+        d = self.released_a_then_failed_on_b()
+        self.assertEqual(mx("resolve", d, "send", "--retry").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 5)  # same B again: it ran (and failed) once more
+        self.assertEqual(self.lines(d, "pay.out"), 3)
+        self.assertEqual(mx("run", d).returncode, 5)  # and a plain run does not repeat it
+        self.assertEqual(self.lines(d, "pay.out"), 3)
+
+    def test_a_retry_that_succeeded_is_spent_and_does_not_cover_the_artifact_later(self):
+        spec = [{"id": "send", "run": "cat art >> pay.out; test -f go", "check": "test -s pay.out",
+                 "deps": ["art"], "approval": "required"}]
+        d = self.task(spec, {"art": "A\n"})
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 5)  # no `go` file yet: fails, uncertain
+        self.write(d, "go", "")
+        self.assertEqual(mx("resolve", d, "send", "--retry").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 0)  # the retry ran and succeeded
+        self.assertEqual(self.lines(d, "pay.out"), 2)
+        self.write(d, "art", "C\n")
+        self.assertEqual(mx("run", d).returncode, 4)  # other content: needs its own approval
+        self.write(d, "art", "A\n")  # back to the content the retry covered
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 4, res.stderr)
+        self.assertEqual(self.lines(d, "pay.out"), 2, "a spent retry covered the same artifact a second time")
+
+    def test_a_retry_does_not_cover_an_artifact_that_changed_in_the_meantime(self):
+        d = self.released_a_then_failed_on_b()
+        self.assertEqual(mx("resolve", d, "send", "--retry").returncode, 0)
+        self.write(d, "art", "C\n")
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(self.lines(d, "pay.out"), 2)
+
+
+class SpentApprovalsAreSaid(TaskCase):
+    """Audit #4 MINORs: a spent approval is no longer silent, a damaged `started` fails closed, and the
+    advice for a damaged task.json does not undo the spending."""
+
+    def test_a_run_that_waits_because_the_approval_is_spent_says_so(self):
+        d = self.task([{"id": "send", "run": "echo pay >> pay.out", "check": "test -s pay.out", "deps": ["art"],
+                        "approval": "required"}], {"art": "A\n"})
+        mx("run", d)
+        mx("approve", d, "send")
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.write(d, "art", "B\n")
+        self.write(d, "art", "A\n")
+        mx("run", d)  # nothing to do: A is done
+        self.write(d, "art", "B\n")
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.write(d, "art", "A\n")
+        self.write(d, "task.json", json.dumps({**self.state(d), "stages": {"send": {
+            **self.state(d)["stages"]["send"], "status": "pending"}}}))
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 4, res.stderr)
+        self.assertIn("already used", res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+
+    def test_a_started_that_is_not_a_number_fails_closed_without_a_traceback(self):
+        d = self.task([{"id": "send", "run": "echo pay >> pay.out", "check": "test -s pay.out", "deps": ["art"],
+                        "approval": "required"}], {"art": "A\n"})
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        st = self.state(d)
+        st["stages"]["send"]["started"] = "x"
+        self.write(d, "task.json", json.dumps(st))
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 4, res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertEqual(self.lines(d, "pay.out"), 0)
+
+    def test_the_advice_for_a_damaged_task_json_names_the_approvals_too(self):
+        d = self.task([{"id": "s", "run": "echo ok >> c", "check": "test -s c"}])
+        self.write(d, "task.json", "{")
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 64, res.stderr)
+        self.assertIn("approvals.jsonl", res.stderr)
+
+
 class ResolveIsInterruptible(TaskCase):
     """Audit #3 MINOR: `resolve` has no signal handler, so SIGTERM at the temp-file window killed it and left the temp file."""
 

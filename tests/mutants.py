@@ -45,7 +45,7 @@ mut("A1_approval_any_digest", CORE, 'and r.get("digest") == digest\n', 'and True
 mut("A2_approval_any_stage", CORE, 'isinstance(r, dict) and r.get("stage") == sid and',
     'isinstance(r, dict) and r.get("stage") is not None and', (APP, "stage_id"),
     "an approval is not bound to the stage id")
-mut("A3_no_approval_needed", CORE, '        if sp.get("approval") and not approved(d, sid, fp, s.get("started", 0)):', '        if False:',
+mut("A3_no_approval_needed", CORE, '        if sp.get("approval") and not (approved(d, sid, fp, s.get("started", 0))', '        if False and not (approved(d, sid, fp, s.get("started", 0))',
     (APP, "no_record"), "an approval stage runs without any approval record")
 mut("A4_crash_reruns", CORE, '        if s["status"] in ("running", "interrupted") and sp.get("approval"):',
     '        if False:', (APP, "never_rerun"), "a crashed irreversible stage is re-run on its own")
@@ -165,8 +165,21 @@ mut("AP1_approval_not_consumed", CORE, 'approved(d, sid, fp, s.get("started", 0)
     (FIND, "ApprovalIsConsumedByUse"), "an old approval comes back to life when the artifact returns to approved content")
 mut("AP3_start_not_recorded", CORE, 'digest=fp, run_id=run_id,\n                 started=round(time.time(), 3))  # spends the approval that released this run',
     'digest=fp, run_id=run_id)', (FIND, "ApprovalIsConsumedByUse"), "the start of a stage is not recorded, so nothing is ever spent")
-mut("AP2_retry_keeps_the_spent_approval", CORE, '            s.pop("started", None)  # an explicit retry may use the approval that is on record, once',
-    '            pass', (APP, "resolve_retry"), "resolve --retry cannot use the approval on record, although it is an explicit decision")
+mut("AP2_retry_covers_nothing", CORE, '            s["retry"] = s.get("digest")  # repeats the run that failed (this artifact) once; `started` stays',
+    '            pass', (APP, "resolve_retry"), "resolve --retry cannot repeat the run that failed, although it is an explicit decision")
+mut("AP4_retry_clears_started", CORE, '            s["retry"] = s.get("digest")  # repeats the run that failed (this artifact) once; `started` stays',
+    '            s.pop("started", None)', (FIND, "RetryIsTiedToTheFailedRun"),
+    "a retry forgets when the stage last started: every spent approval of any content comes back")
+mut("AP5_retry_for_any_artifact", CORE, 's.get("retry") == fp)', 's.get("retry") is not None)',
+    (FIND, "RetryIsTiedToTheFailedRun"), "a retry is good for whatever the artifact has become")
+mut("AP6_retry_never_spent", CORE, '        s.pop("retry", None)  # and the explicit retry, if that is what released it',
+    '        pass', (FIND, "RetryIsTiedToTheFailedRun"), "one retry releases every later run of the same artifact")
+mut("AP7_started_damaged_not_guarded", CORE, '    if isinstance(since, bool) or not isinstance(since, (int, float)):\n        return False',
+    '    if False:\n        return False', (FIND, "SpentApprovalsAreSaid"), "a damaged `started` is a traceback instead of a closed gate")
+mut("AP8_spent_approval_silent", CORE, '            if approved(d, sid, fp):  # one is on record, but a start has already used it',
+    '            if False:', (FIND, "SpentApprovalsAreSaid"), "a spent approval waits without saying why")
+mut("AP9_advice_undoes_spending", CORE, 'move task.json AND "\n                                "approvals.jsonl aside', 'move task.json AND "\n                                "the approvals aside',
+    (FIND, "SpentApprovalsAreSaid"), "the advice for a damaged task.json does not name the approvals file")
 mut("RS1_resolve_not_interruptible", CORE, '    old = signal.signal(signal.SIGTERM, lambda sig, _frame: sys.exit(128 + sig))',
     '    old = signal.getsignal(signal.SIGTERM)', (FIND, "ResolveIsInterruptible"),
     "SIGTERM kills resolve on the spot and leaves its temp file")

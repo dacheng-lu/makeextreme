@@ -182,8 +182,10 @@ class Task:
                 with open(self.sp) as f:
                     self.state = json.load(f)
             except ValueError as e:
-                raise SpecError(f"task.json is unreadable ({e}); restore it from a copy, or delete it "
-                                "to start the task over")
+                raise SpecError(f"task.json is unreadable ({e}); restore it from a copy, or move task.json AND "
+                                "approvals.jsonl aside to start the task over (approvals are spent by "
+                                "the runs recorded in task.json, so keeping them would release the "
+                                "stages again)")
         else:
             self.state = {"status": "new", "stages": {}}
 
@@ -286,6 +288,8 @@ def approved(d, sid, digest, since=0):
     """Is there an approval of exactly this stage and artifact that was written AFTER the stage last
     started (`since`)? An approval authorises one execution: it is spent when the stage starts, so an
     artifact that changes away and comes back does not bring an old approval back to life."""
+    if isinstance(since, bool) or not isinstance(since, (int, float)):
+        return False  # a damaged `started`: never guess that an approval is still unspent
     try:
         with open(approvals_path(d), errors="replace") as f:
             lines = f.read().splitlines()
@@ -347,11 +351,16 @@ def _run(t, d):
             t.log("recovered_from_crash" if s["status"] == "running" else "recovered_from_interrupt", stage=sid)
             for pg in reap(s):
                 t.log("reaped", stage=sid, pgid=pg)
-        if sp.get("approval") and not approved(d, sid, fp, s.get("started", 0)):
+        if sp.get("approval") and not (approved(d, sid, fp, s.get("started", 0))
+                                       or (s.get("retry") is not None and s.get("retry") == fp)):
+            if approved(d, sid, fp):  # one is on record, but a start has already used it
+                print(f"note: the approval on record for {sid!r} was already used by a start at "
+                      f"{s.get('started')}; approve again to release it once more", file=sys.stderr)
             return t.halt("awaiting_approval", sid, EX_AWAITING, "awaiting_approval", digest=fp)
         run_id = os.urandom(8).hex()
         s.update(status="running", attempts=s["attempts"] + 1, digest=fp, run_id=run_id,
                  started=round(time.time(), 3))  # spends the approval that released this run
+        s.pop("retry", None)  # and the explicit retry, if that is what released it
         s.pop("pgid", None)
         s.pop("pg_start", None)
         cur["sid"] = sid
@@ -459,7 +468,7 @@ def resolve(d, sid, mode):
             s.update(status="done", digest=fingerprint(d, sp), check_rc=0, check_out=chk.stdout.strip()[:200])
         else:
             s["status"] = "pending"
-            s.pop("started", None)  # an explicit retry may use the approval that is on record, once
+            s["retry"] = s.get("digest")  # repeats the run that failed (this artifact) once; `started` stays
         t.state["status"] = "resolved"
         t.save()
         t.log("resolved", stage=sid, mode=mode)
