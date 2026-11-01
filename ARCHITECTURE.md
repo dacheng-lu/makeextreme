@@ -32,7 +32,7 @@
 视频流水线 OCR 在 159/272 帧处被误判为完成。这就是 Longhaul 所说的"crash-resume 确实需要"。
 
 **硬规则**
-- F2a 对 Longhaul 只读依赖：钉在提交 `af52cd8`（v1.1），用 `git archive` 取，不从活的工作树 import。
+- F2a 不依赖 Longhaul 的代码和 schema（2026-11-01，D9）：只拷贝 `scripts/secret_scan.py`（取自 v1.1 `af52cd8`，Apache-2.0，随 `NOTICE.md` 署名）。v1.1 的 gate、状态格式一律不接。
 - F2b 不向 `~/Projects/longhaul` 写任何东西。**[实测]** 它的工作树正在做 v1.2（eval harness），
   有未提交改动，读取时测试 130 项中 1 项失败（`test_declared_mutant_scores_reproduce_on_the_oracle`）。那是它自己的在研状态，不归我们修。
 
@@ -47,7 +47,7 @@
 | F7 | 单写者锁，记录 pid + 进程启动 tick；持锁者已死则接管，存活则拒绝 | 防 pid 复用，防双写 |
 | F8 | 续跑：从最后一个绿阶段开始，已完成阶段不重跑；崩溃阶段重跑前先杀掉它遗留的孤儿进程组 | 见下文"实测" |
 | F9 | 不可逆动作（删除、发送、部署）声明为 `approval: required` 阶段，运行器暂停并记录，**不自动放行** | 拒绝 pstack 的 never-block-on-the-human 用于不可逆场景 |
-| F10 | 状态和日志里不得出现凭据；完成时复用 Longhaul 的 `secret_scan` | 沿用已有检测，不重写 |
+| F10 | 状态和日志里不得出现凭据；完成时对 `journal.jsonl` 与 `task.json` 做凭据扫描（拷贝自 Longhaul v1.1 的 `secret_scan.py`，不依赖其余部分） | 沿用已有检测，不重写；不绑 Longhaul 的 schema |
 | F11 | 只用 Python 标准库，≥3.10，先支持 Linux | 与 Longhaul 同风格；本机即 Linux |
 | F12 | 宿主 v1.0 只有两个：通用 shell、Hermes（`hermes chat --query-file … -Q`，按 Longhaul-trio 记录的隔离坑清洗环境） | 先打通两条，再谈 Claude Code / Codex |
 
@@ -67,9 +67,9 @@
 | AC3 | 对已完成任务再次续跑：不执行任何阶段，状态文件字节不变 | **[实测] 通过** |
 | AC4 | 持锁者存活 → 拒绝（退出码 3）；持锁者已死 → 接管并完成 | **[实测] 通过** |
 | AC7 | SIGTERM（即 cron 的 -15）→ 退出码 143，状态与日志记 `interrupted`；续跑可完成 | **[实测] 通过** |
-| AC5 | 产物改动后，只让依赖它的阶段失效（用 Longhaul 的内容哈希 revision） | 未做 |
+| AC5 | 产物改动后，只让依赖它的阶段失效（阶段指纹 = 命令 + 显式声明的 `deps` 内容 sha256，记入状态；照 DVC 的思路，不引入 DVC） | 未做 |
 | AC6 | `approval` 阶段：无记录的批准不得继续；有批准才继续 | 未做 |
-| AC8 | 任务完成时通过 Longhaul `gate`；日志里埋入凭据则 gate 失败 | 未做 |
+| AC8 | 任务完成时对 journal 与 task.json 做凭据扫描；埋入凭据 → 完成被拒（D9：不再接 Longhaul gate） | 未做 |
 | AC9 | Hermes 宿主跑通一个真实阶段（清洗环境，结果被捕获）——按需集成测试，不进 CI | 未做 |
 | AC10 | 第一个真实客户：视频流水线（下载→转写→抽帧→OCR→成稿→交付）在短视频上端到端跑通；OCR 期间被杀，续跑后最终产物哈希与不中断的一次相同 | 未做 |
 
@@ -105,6 +105,14 @@
 - **D4 第一个客户**：视频流水线——默认采用。
 - **D5 M1 的执行方式**：**已定 = A**（2026-10-31，用户回复）。我自己写；Sonnet 在里程碑处审计；Opus 只做最终审；不动 GPT-6-Astra。
 - **D6 交付内容的来源**：**已定**（2026-10-31，用户指令）：结合 Superpowers、ECC、Ponytail 与本地 Hermes 实用且适用的 skill。取舍台账见 `docs/SOURCES.md`。
+
+**Grill 第 1 轮（2026-11-01，用户用字母回答）**
+- **D7 受众与成功标准**：**已定 = 1B**。自用 **加** 开源到 GitHub。v1.0 成功 = 视频流水线 AC10 通过且 Hermes 可调用。许可证、公开时机、分发形式见第 2 轮（待定）。
+- **D8 杀死准则**：**已定 = 2C**。不设"比现状强否则砍掉"的对照实验，做到 M4。**后果（我的意见，已告知）**：差异点 1–4 到发布时仍未经 A/B 证明，因此 README 只能写**已测量**的事实（STEP0 试跑表），不得写"比 X 更好"。
+- **D9 Longhaul 耦合**：**已定 = 3B**。只拷贝 `secret_scan.py`（Apache-2.0，NOTICE 署名），去掉 gate 桥（AC8 已改写），证据格式用自己的 journal。
+- **D10 审批威胁模型**：**已定 = 4A**。只防"意外自动放行"，批准绑定产物哈希、产物变则旧批准作废；**不声称能防持有 shell 的 agent 自行批准**（同账户同 shell，运行器分不清），文档写明。附加规则：不可逆阶段必须声明 `approval: required`，否则不得入阶段。
+- **D11 预算**：**已定 = 6B**。无封顶，做完 M4。
+- **D12 崩溃后谁续跑**：**待定**（用户追问"能不能用当前的 Longhaul"，答案见聊天：Longhaul v1.1 自述是协议、不是运行时，不能重启进程；本地 `scheduled-agent-loops` 已有 cron 启动器模式可直接用）。
 
 ## 9. 同类对照（2026-10-31，GitHub API 实测星数；功能描述取自各仓库自述，未逐个运行）
 
