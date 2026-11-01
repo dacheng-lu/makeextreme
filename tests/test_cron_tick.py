@@ -1,7 +1,10 @@
 """examples/cron_tick.sh: a tick starts the worker and reports; it never decides (decision 5A)."""
 import fcntl
+import json
 import os
 import subprocess
+import sys
+import tempfile
 import unittest
 
 from support import REPO, TaskCase
@@ -74,6 +77,65 @@ class CronTick(TaskCase):
         res = subprocess.run(["sh", TICK, "/nonexistent/task"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 64)
         self.assertNotIn("Traceback", res.stderr)
+
+
+class CronTickEntryPoints(TaskCase):
+    """Found by the D19 audit (2026-11-01): how the script is started and what it tells the human."""
+
+    STAGE = {"id": "s", "run": "echo x >> out.txt", "check": "test -s out.txt"}
+
+    def test_a_tick_started_through_a_symlink_to_the_script_still_finds_the_package(self):
+        d = self.task([self.STAGE])
+        links = tempfile.TemporaryDirectory(prefix="bin-")
+        self.addCleanup(links.cleanup)
+        link = os.path.join(links.name, "tick")
+        os.symlink(TICK, link)
+        res = subprocess.run(["sh", link, d], capture_output=True, text=True, cwd=links.name)
+        self.assertEqual((res.returncode, res.stdout.strip()), (0, "makeextreme: complete"), res.stdout + res.stderr)
+        self.assertEqual(self.read(d, "out.txt"), "x\n")
+
+    def test_a_missing_or_unusable_interpreter_is_not_reported_as_a_refused_task(self):
+        d = self.task([self.STAGE])
+        bogus = os.path.join(d, "not-executable")
+        open(bogus, "w").write("#!/bin/sh\n")
+        for py in ("/nonexistent/python3", "no-such-interpreter-xyz", bogus):
+            res = subprocess.run(["sh", TICK, d], capture_output=True, text=True, env=dict(os.environ, PYTHON=py))
+            self.assertEqual(res.returncode, 69, (py, res.stdout, res.stderr))
+            self.assertIn("no usable python interpreter: " + py, res.stderr)
+            self.assertNotIn("refused", res.stdout + res.stderr, py)
+            self.assertNotIn("Traceback", res.stderr)
+        self.assertFalse(os.path.exists(os.path.join(d, "task.json")), "nothing may run when the interpreter is unusable")
+
+    def test_the_header_documents_exit_69_next_to_the_other_codes(self):
+        header = [l for l in open(TICK, encoding="utf-8").read().splitlines() if l.startswith("#")]
+        self.assertTrue(any("69" in l for l in header), header)
+
+    def test_the_advice_for_a_waiting_approval_can_be_pasted_into_a_shell_even_for_an_awkward_path(self):
+        parent = tempfile.TemporaryDirectory(prefix="adv-")
+        self.addCleanup(parent.cleanup)
+        d = os.path.join(parent.name, "my task's dir")
+        os.makedirs(d)
+        with open(os.path.join(d, "stages.json"), "w") as f:
+            json.dump([{"id": "send", "run": "echo pay >> pay.out", "check": "test -s pay.out", "deps": ["art"], "approval": "required"}], f)
+        self.write(d, "art", "A\n")
+        res = subprocess.run(["sh", TICK, d], capture_output=True, text=True, env=dict(os.environ, PYTHON=sys.executable))
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        advice = res.stdout.strip().split("waiting for approval: ", 1)[1]
+        self.assertTrue(advice.startswith("cd '"), advice)
+        run = subprocess.run(["sh", "-c", advice.replace("<stage>", "send")], capture_output=True, text=True, cwd=tempfile.gettempdir())
+        self.assertEqual(run.returncode, 0, (advice, run.stdout, run.stderr))
+        self.assertTrue(os.path.exists(os.path.join(d, "approvals.jsonl")), "the printed advice did not approve the stage")
+
+    def test_the_advice_for_an_uncertain_stage_names_the_repository_and_quotes_the_task(self):
+        d = self.task([{"id": "send", "run": "echo pay >> pay.out; exit 1", "check": "true", "deps": ["art"], "approval": "required"}], {"art": "A\n"})
+        env = dict(os.environ, PYTHON=sys.executable)
+        subprocess.run(["sh", TICK, d], capture_output=True, text=True, env=env)
+        from support import mx
+        mx("approve", d, "send")
+        res = subprocess.run(["sh", TICK, d], capture_output=True, text=True, env=env)
+        self.assertEqual(res.returncode, 5, res.stdout + res.stderr)
+        self.assertIn("cd '" + REPO + "' && ", res.stdout)
+        self.assertIn("resolve '" + d + "' send", res.stdout.replace("<stage>", "send"))
 
 
 if __name__ == "__main__":

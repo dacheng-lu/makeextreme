@@ -47,7 +47,9 @@ def main(argv):
     ap.add_argument("--label")
     a = ap.parse_args(argv)
     ok = True
-    with tempfile.TemporaryDirectory(dir=os.path.expanduser("~/ac10work")) as tmp:
+    work = os.path.expanduser("~/ac10work")
+    os.makedirs(work, exist_ok=True)  # ac10.py makes it too, but this script may be the first thing run on a machine
+    with tempfile.TemporaryDirectory(dir=work) as tmp:
         ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
         base = os.path.join(tmp, "control")
         shutil.copytree(REPO, base, ignore=ignore)

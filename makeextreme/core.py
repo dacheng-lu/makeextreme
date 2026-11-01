@@ -1,7 +1,7 @@
 """makeextreme core: crash-safe stage runner. Standard library only, Linux (uses /proc).
 
 Exit codes of `run`: 0 complete, 2 a stage failed, 3 locked by a live runner, 4 waiting for
-approval, 5 an irreversible stage crashed or failed and needs `resolve`, 6 completion refused
+approval, 5 an irreversible stage crashed or failed, or its declared outputs changed after it ran, and needs `resolve`, 6 completion refused
 (secret-shaped value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json, an
 unreadable task.json or dependency, or a missing task directory, 130/143 stopped by SIGINT/SIGTERM.
 `approve` and `resolve` use 0 for done, 1 for a refusal (not an approval stage, artifact missing,
@@ -145,7 +145,43 @@ def drifted(recorded, now):
     return [x for x, h in now.items() if rec.get(x) != h]
 
 
-def validate_spec(spec):
+RECORD_FILES = ("task.json", "journal.jsonl", "approvals.jsonl", "lock")  # the runner's own files in the task directory
+
+
+def _inside(a, b):
+    """True when path `a` is `b` or lies inside it (both already real paths)."""
+    return a == b or a.startswith(b + os.sep)
+
+
+def _check_paths(spec, d):
+    """Refuse declared paths that the runner itself or another stage keeps changing: such a stage could never be skipped.
+    All comparisons are on real paths, so `./x`, `a/../x` and a symlink to x are the same path as `x`."""
+    root = os.path.realpath(d)
+    records = [os.path.join(root, r) for r in RECORD_FILES]
+    outs = []
+    for sp in spec:
+        sid, deps, own = sp["id"], sp.get("deps", []), sp.get("outputs", [])
+        for kind, paths in (("deps", deps), ("outputs", own)):
+            for x in paths:
+                rec = next((r for r in records if _inside(r, os.path.realpath(os.path.join(root, x)))), None)
+                if rec:  # the path is a record file or a directory that contains one (".", "..", the task directory)
+                    raise SpecError(f"stage {sid}: {kind} {x!r} is or contains the runner's own record {os.path.basename(rec)}: "
+                                    "it changes with every save, so the stage could never be skipped")
+        for x in deps:
+            for y in own:
+                a, b = os.path.realpath(os.path.join(root, x)), os.path.realpath(os.path.join(root, y))
+                if _inside(a, b) or _inside(b, a):
+                    raise SpecError(f"stage {sid}: 'deps' and 'outputs' overlap ({x!r}, {y!r}): a stage that changes one of "
+                                    "its own deps has a new fingerprint after every run")
+        outs += [(sid, y, os.path.realpath(os.path.join(root, y))) for y in own]
+    for i, (s1, x1, r1) in enumerate(outs):
+        for s2, x2, r2 in outs[i + 1:]:
+            if _inside(r1, r2) or _inside(r2, r1):
+                raise SpecError(f"stages {s1} and {s2} declare overlapping outputs ({x1!r}, {x2!r}): "
+                                "each run of one changes what the other recorded")
+
+
+def validate_spec(spec, d=None):
     if not isinstance(spec, list) or not spec:
         raise SpecError("stages.json must be a non-empty list")
     seen = set()
@@ -173,6 +209,8 @@ def validate_spec(spec):
             raise SpecError(f"stage {sid}: 'approval' can only be \"required\"")
         if sp.get("approval") and not deps:
             raise SpecError(f"stage {sid}: an approval stage must declare the artifact it approves in 'deps'")
+    if d is not None:
+        _check_paths(spec, d)
 
 
 def load_spec(d):
@@ -187,7 +225,7 @@ def load_spec(d):
     except ValueError as e:
         raise SpecError(f"invalid stages.json: not valid JSON ({e})")
     try:
-        validate_spec(spec)
+        validate_spec(spec, d)
     except SpecError as e:
         raise SpecError(f"invalid stages.json: {e}")
     return spec

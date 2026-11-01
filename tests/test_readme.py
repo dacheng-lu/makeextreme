@@ -94,6 +94,24 @@ class ReadmeFacts(unittest.TestCase):
             for code in codes:
                 self.assertIn("`%d`" % code, have[name], "the %s section does not list exit code %d" % (name, code))
 
+    def test_exit_code_64_names_every_cause_in_every_language(self):
+        """Found by the D19 audit: 64 is also returned for a damaged task.json and for a declared output that cannot be read."""
+        have = sections()
+        for name in LANGS:
+            line = next((l for l in have[name].split("\n") if "`64`" in l and "`6`" in l), None)
+            self.assertIsNotNone(line, "the %s section has no exit-code line" % name)
+            self.assertIn("task.json", line, "the %s exit-code line does not say that 64 also covers a damaged task.json" % name)
+            self.assertRegex(line.split("`64`", 1)[1], r"(?i)output|产物|Ausgabe", "the %s exit-code line leaves out the unreadable output" % name)
+
+    def test_the_command_that_runs_the_ac10_mutants_carries_its_required_argument_in_every_language(self):
+        """The script needs --source; the documented command used to be rejected without it."""
+        have = sections()
+        for name in LANGS:
+            hits = re.findall(r"python examples/video_pipeline/ac10_mutants\.py[^`]*", have[name])
+            self.assertTrue(hits, "the %s section does not give the AC10 mutant command" % name)
+            for h in hits:
+                self.assertIn("--source", h, "the %s section gives %r without --source" % (name, h))
+
     def test_no_language_makes_a_comparative_claim(self):
         text = page().lower()
         for name, spec in LANGS.items():

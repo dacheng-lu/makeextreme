@@ -63,6 +63,16 @@ class DeclaredOutputs(TaskCase):
         self.assertEqual(mx("run", d).returncode, 0)
         self.assertEqual((self.lines(d, "rm"), self.lines(d, "ru")), (2, 1))
 
+    def test_regenerated_bytes_that_differ_do_cascade_to_the_stages_that_read_them(self):
+        """The other direction of the test above: with a producer whose bytes change on every run, a reader that is not run again
+        would mean the content of its dep is not part of its fingerprint (the audit found the test above green in that case)."""
+        growing = dict(MAKE, run="echo made >> rm; cp rm out.txt")
+        d = self.task([growing, USE])
+        self.assertEqual(mx("run", d).returncode, 0)
+        os.remove(os.path.join(d, "out.txt"))
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual((self.lines(d, "rm"), self.lines(d, "ru")), (2, 2))
+
     def test_a_deleted_last_output_is_noticed_although_no_later_stage_reads_it(self):
         d = self.pipe()
         os.remove(os.path.join(d, "use.out"))
@@ -79,6 +89,12 @@ class DeclaredOutputs(TaskCase):
         self.assertEqual(mx("run", d).returncode, 0)
         self.assertEqual(self.lines(d, "rf"), 2)
         self.assertEqual(sorted(os.listdir(os.path.join(d, "frames"))), ["a", "b"])
+        # deleting a file also changes the list of names; the content is what counts when the names stay the same
+        self.write(d, "frames/a", "tampered\n")
+        self.assertEqual(sorted(os.listdir(os.path.join(d, "frames"))), ["a", "b"])
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "rf"), 3, "an edited file inside a declared directory output was not noticed")
+        self.assertEqual(self.read(d, "frames/a"), "1\n")
 
     def test_a_declared_output_that_the_run_did_not_produce_is_not_done(self):
         d = self.task([{"id": "x", "run": "true", "check": "true", "outputs": ["never.txt"]}])
@@ -248,6 +264,14 @@ class OutputsInTheSpec(TaskCase):
     def test_a_path_that_is_both_a_dep_and_an_output_is_refused(self):
         self.refused({"id": "x", "run": "echo hi >> a", "check": "true", "deps": ["a"], "outputs": ["a"]},
                      "overlap", "a")
+
+    def test_validate_spec_without_a_task_directory_refuses_a_path_that_is_both_a_dep_and_an_output(self):
+        """Since 1.1.1 the loader also compares real paths; the public function without a directory keeps the string-level guard."""
+        from makeextreme import core
+        stage = {"id": "x", "run": "true", "check": "true", "deps": ["a"], "outputs": ["a"]}
+        with self.assertRaisesRegex(core.SpecError, "overlap"):
+            core.validate_spec([stage])
+        core.validate_spec([dict(stage, outputs=["b"])])  # control: the same stage with distinct paths is fine
 
 
 if __name__ == "__main__":

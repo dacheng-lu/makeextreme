@@ -189,29 +189,53 @@ TICK = "examples/cron_tick.sh"
 mut("T1_busy_is_a_failure", TICK, '  3) echo "makeextreme: busy (another runner holds the lock)"; rc=0 ;;',
     '  3) echo "makeextreme: busy (another runner holds the lock)" ;;', (CRON, "busy"),
     "a tick that meets a live runner exits 3, which cron mails as a failure")
-mut("T2_approval_wait_is_a_failure", TICK, 'approve $task <stage>"; rc=0 ;;', 'approve $task <stage>" ;;', (CRON, "approval_wait"),
+mut("T2_approval_wait_is_a_failure", TICK, 'approve $(q "$task") <stage>"; rc=0 ;;', 'approve $(q "$task") <stage>" ;;', (CRON, "approval_wait"),
     "waiting for a human reads as a failed tick")
-mut("T3_uncertain_is_swallowed", TICK, '  5) echo "makeextreme: an UNCERTAIN stage needs a human: python -m makeextreme resolve $task <stage> --done | --retry" ;;',
-    '  5) echo "makeextreme: an UNCERTAIN stage needs a human: python -m makeextreme resolve $task <stage> --done | --retry"; rc=0 ;;',
+mut("T3_uncertain_is_swallowed", TICK, 'resolve $(q "$task") <stage> --done | --retry" ;;',
+    'resolve $(q "$task") <stage> --done | --retry"; rc=0 ;;',
     (CRON, "uncertain"), "an uncertain irreversible stage exits 0 and nobody is alerted")
 mut("T4_relative_task_path_breaks", TICK, 'task=$(cd "${1:?usage: cron_tick.sh <task_dir>}" 2>/dev/null && pwd) || { echo "makeextreme: no such task directory" >&2; exit 64; }',
     'task=${1:?usage: cron_tick.sh <task_dir>}', (CRON, "relative_task"), "a relative task path breaks once the script changes into the repository")
+# 1.1.1: how the script is started and what it tells the human (D19 audit)
+mut("T5_symlinked_script_loses_the_repo", TICK, 'self=$(readlink -f -- "$0" 2>/dev/null || printf %s "$0")', 'self=$0', (CRON, "symlink"),
+    "a tick installed as a symlink cannot import the package")
+mut("T6_missing_python_is_a_refusal", TICK, '[ -n "$usable" ] || { echo "makeextreme: no usable python interpreter: $py" >&2; exit 69; }', ':', (CRON, "interpreter"),
+    "a missing interpreter is reported as a refused task (rc 127)")
+mut("T7_advice_leaves_the_task_unquoted", TICK, 'approve $(q "$task") <stage>', 'approve $task <stage>', (CRON, "awkward_path"),
+    "the printed approve command breaks on a path with a space or a quote")
+mut("T8_advice_forgets_the_repo", TICK, 'waiting for approval: cd $(q "$repo") && $py -m', 'waiting for approval: $py -m', (CRON, "awkward_path"),
+    "the printed approve command only works from the repository")
+mut("T9_quote_does_not_escape_a_quote", TICK, '| sed "s/\'/\'\\\\\\\\\'\'/g"', '| cat', (CRON, "awkward_path"),
+    "a single quote inside the task path ends the quoting early")
 
 README_T = "test_readme.py"
 mut("R1_zh_test_count_is_wrong", "README.md", " 个测试（`python -m unittest", "7 个测试（`python -m unittest", (README_T, "numbers"),
     "the Chinese section quotes a test count the repository does not have")
-mut("R2_de_loses_an_exit_code", "README.md", "`64` ungültige", "`65` ungültige", (README_T, "exit_code"),
+mut("R2_de_loses_an_exit_code", "README.md", "`64` sauber abgelehnt", "`65` sauber abgelehnt", (README_T, "exit_code"),
     "the German section lists a wrong exit code for an invalid spec")
 mut("R3_en_makes_a_comparative_claim", "README.md", "Not compared with any other tool, so no ranking claim is made.",
     "Faster than any other tool.", (README_T, "comparative"), "the English section claims to beat other tools")
 mut("R4_language_bar_loses_de", "README.md", "[Deutsch](#deutsch)", "Deutsch", (README_T, "navigation"),
     "the language bar no longer links to the German section")
-mut("R5_en_names_another_version", "README.md", "Version 1.1.0, one author", "Version 1.1.1, one author",
+mut("R5_en_names_another_version", "README.md", "Version 1.1.1, one author", "Version 1.1.2, one author",
     (README_T, "required_facts"), "the English section names a version the code does not have")
-mut("R9_header_names_another_version", "README.md", "Version: **1.1.0** ·", "Version: **1.1.1** ·",
+mut("R9_header_names_another_version", "README.md", "Version: **1.1.1** ·", "Version: **1.1.2** ·",
     (README_T, "required_facts"), "the page header names a version the code does not have")
-mut("R10_zh_names_another_version", "README.md", "版本 1.1.0，单人开发", "版本 1.1.1，单人开发",
+mut("R10_zh_names_another_version", "README.md", "版本 1.1.1，单人开发", "版本 1.1.2，单人开发",
     (README_T, "required_facts"), "the Chinese section names a version the code does not have")
+mut("R11_exit_64_loses_task_json", "README.md",
+    "`64` refused cleanly, nothing runs: an invalid or missing `stages.json` or task directory, a damaged `task.json`, or a declared output that cannot be read.",
+    "`64` refused cleanly, nothing runs: an invalid or missing `stages.json` or task directory.", (README_T, "exit_code_64"),
+    "the English exit-code line forgets that 64 also covers a damaged task.json and an unreadable output")
+mut("R12_ac10_command_without_source_en", "README.md", "variants make that check fail (`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`)",
+    "variants make that check fail (`python examples/video_pipeline/ac10_mutants.py`)", (README_T, "ac10_mutants"),
+    "the English section gives the AC10 mutant command without its required --source")
+mut("R13_ac10_command_without_source_zh", "README.md", "会让这项检查失败（`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`）",
+    "会让这项检查失败（`python examples/video_pipeline/ac10_mutants.py`）", (README_T, "ac10_mutants"),
+    "the Chinese section gives the AC10 mutant command without its required --source")
+mut("R14_ac10_command_without_source_de", "README.md", "lassen diese Prüfung fehlschlagen (`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`)",
+    "lassen diese Prüfung fehlschlagen (`python examples/video_pipeline/ac10_mutants.py`)", (README_T, "ac10_mutants"),
+    "the German section gives the AC10 mutant command without its required --source")
 mut("R6_logo_reference_is_broken", "README.md", 'src="assets/logo.jpg"', 'src="assets/logo-missing.jpg"',
     (README_T, "logo"), "the header shows a logo file that does not exist")
 mut("R7_de_loses_a_subsection", "README.md", "### Grenzen", "Grenzen", (README_T, "navigation"),
@@ -224,7 +248,9 @@ mut("O1_skip_ignores_outputs", CORE, 'bad = drifted(s.get("sha256"), now)', 'bad
     "a finished stage is skipped without looking at its declared outputs")
 mut("O2_outputs_not_in_the_fingerprint", CORE, '        doc["outputs"] = sp["outputs"]', '        pass',
     (OUT_T, "voids_its_approval"), "the declared output names are not part of the stage identity")
-mut("O3_fingerprint_always_has_outputs", CORE, '    if sp.get("outputs"):  # only when declared', '    if True:  # only when declared',
+mut("O3_fingerprint_always_has_outputs", CORE,
+    '    if sp.get("outputs"):  # only when declared: a stage without outputs keeps its 1.0.0 fingerprint\n        doc["outputs"] = sp["outputs"]\n',
+    '    doc["outputs"] = sp.get("outputs", [])\n',
     (OUT_T, "version_1_0_0"), "a stage without outputs no longer has its 1.0.0 fingerprint")
 mut("O4_approval_stage_is_made_again", CORE, '                if sp.get("approval"):  # it acted once;', '                if False:  # it acted once;',
     (OUT_T, "changed_output_makes_it_uncertain"), "an irreversible stage whose output changed is run again on its own")
@@ -248,9 +274,38 @@ mut("O11_deps_outputs_overlap_allowed", CORE, '        if both:', '        if Fa
     "a path that is both a dep and an output of one stage is accepted")
 mut("O12_outputs_type_unchecked", CORE, """if not (isinstance(outs, list) and all(isinstance(x, str) and x for x in outs)):""", "if False:", (OUT_T, "list_of_paths"),
     "'outputs' may be anything")
+# 1.1.1: the two tests the D19 audit found green without the mechanism they name
+mut("O13_dir_output_hashed_by_names", CORE, 'one = _path_hash(os.path.join(p, n), stack | {real}, memo)', 'one = "x"', (OUT_T, "directory_output_counts_by_content"),
+    "a declared directory output is hashed by file names, not content")
+mut("O14_reader_ignores_the_content_of_its_deps", CORE, '"check": sp["check"], "deps": deps}', '"check": sp["check"], "deps": {}}', (OUT_T, "do_cascade"),
+    "the content of a stage's deps is not part of its fingerprint")
+
+# 1.1.1: paths the runner itself or another stage keeps changing are refused at load (D19 audit)
+OVL = "test_overlap.py"
+mut("V1_records_not_refused", CORE, 'rec = next((r for r in records if _inside(r, os.path.realpath(os.path.join(root, x)))), None)', 'rec = None', (OVL, "record_files"),
+    "a stage may declare task.json (or another record file) as a dep or output")
+mut("V2_task_dir_not_refused", CORE, 'rec = next((r for r in records if _inside(r, os.path.realpath(os.path.join(root, x)))), None)',
+    'rec = next((r for r in records if r == os.path.realpath(os.path.join(root, x))), None)', (OVL, "task_directory_itself"),
+    "'.' or a parent directory, which contains the records, is accepted")
+mut("V3_record_spelling_not_normalised", CORE, 'rec = next((r for r in records if _inside(r, os.path.realpath(os.path.join(root, x)))), None)',
+    'rec = next((r for r in records if _inside(r, os.path.join(root, x))), None)', (OVL, "spelled_differently"),
+    "./task.json is not recognised as task.json")
+mut("V4_symlink_to_record_followed_not", CORE, 'rec = next((r for r in records if _inside(r, os.path.realpath(os.path.join(root, x)))), None)',
+    'rec = next((r for r in records if _inside(r, os.path.abspath(os.path.join(root, x)))), None)', (OVL, "symlink"),
+    "a symlink to a record file is accepted")
+mut("V5_shared_output_across_stages_accepted", CORE, 'if _inside(r1, r2) or _inside(r2, r1):', 'if False:', (OVL, "same_output"),
+    "two stages may declare the same output")
+mut("V6_only_equal_outputs_overlap", CORE, 'if _inside(r1, r2) or _inside(r2, r1):', 'if r1 == r2:', (OVL, "inside_another"),
+    "an output inside another stage's directory output is not an overlap")
+mut("V7_string_prefix_is_containment", CORE, 'return a == b or a.startswith(b + os.sep)', 'return a.startswith(b)', (OVL, "string_prefix"),
+    "frames2 counts as inside frames")
+mut("V8_dep_inside_own_output_accepted", CORE, 'if _inside(a, b) or _inside(b, a):', 'if a == b and False:', (OVL, "dep_directory"),
+    "a stage whose dep directory contains its own output is accepted")
+mut("V9_paths_not_checked_at_load", CORE, '        validate_spec(spec, d)\n', '        validate_spec(spec)\n', (OVL, "record_files"),
+    "load_spec forgets to pass the task directory, so no path is checked")
 
 RM_T = "test_roadmap.py"
-mut("RM1_roadmap_lacks_the_current_version", "ROADMAP.md", "- **1.1.0** (2026-11-01):", "- **1.0.9** (2026-11-01):",
+mut("RM1_roadmap_lacks_the_current_version", "ROADMAP.md", "- **1.1.1** (2026-11-01):", "- **1.0.9** (2026-11-01):",
     (RM_T, "current_version"), "the roadmap does not list the version the code has as released")
 mut("RM2_roadmap_link_is_broken", "ROADMAP.md", "[NOTICE.md](NOTICE.md)", "[NOTICE.md](NOTICE-missing.md)",
     (RM_T, "relative_link"), "the roadmap links to a file that does not exist")
