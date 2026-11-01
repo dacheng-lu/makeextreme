@@ -48,6 +48,7 @@
 | F8 | 续跑：从最后一个绿阶段开始，已完成阶段不重跑；崩溃阶段重跑前先杀掉它遗留的孤儿进程组 | 见下文"实测" |
 | F9 | 不可逆动作（删除、发送、部署）声明为 `approval: required` 阶段，运行器暂停并记录，**不自动放行** | 拒绝 pstack 的 never-block-on-the-human 用于不可逆场景 |
 | F10 | 状态和日志里不得出现凭据；完成时对 `journal.jsonl` 与 `task.json` 做凭据扫描（拷贝自 Longhaul v1.1 的 `secret_scan.py`，不依赖其余部分） | 沿用已有检测，不重写；不绑 Longhaul 的 schema |
+| F13 | 不可逆（`approval`）阶段在崩溃或被 SIGTERM 中断后进入 `uncertain`：运行器清理孤儿但**不自动重跑**，退出码 5；人用 `resolve --done`（check 必须通过）或 `resolve --retry` 决定 | 动作可能已经发生；防止重复发送/删除（借 kiso 的 uncertain 想法） |
 | F11 | 只用 Python 标准库，≥3.10，先支持 Linux | 与 Longhaul 同风格；本机即 Linux |
 | F12 | 宿主 v1.0 只有两个：通用 shell、Hermes（`hermes chat --query-file … -Q`，按 Longhaul-trio 记录的隔离坑清洗环境） | 先打通两条，再谈 Claude Code / Codex |
 
@@ -67,9 +68,9 @@
 | AC3 | 对已完成任务再次续跑：不执行任何阶段，状态文件字节不变 | **[实测] 通过** |
 | AC4 | 持锁者存活 → 拒绝（退出码 3）；持锁者已死 → 接管并完成 | **[实测] 通过** |
 | AC7 | SIGTERM（即 cron 的 -15）→ 退出码 143，状态与日志记 `interrupted`；续跑可完成 | **[实测] 通过** |
-| AC5 | 产物改动后，只让依赖它的阶段失效（阶段指纹 = 命令 + 显式声明的 `deps` 内容 sha256，记入状态；照 DVC 的思路，不引入 DVC） | 未做 |
-| AC6 | `approval` 阶段：无记录的批准不得继续；有批准才继续 | 未做 |
-| AC8 | 任务完成时对 journal 与 task.json 做凭据扫描；埋入凭据 → 完成被拒（D9：不再接 Longhaul gate） | 未做 |
+| AC5 | 产物改动后，只让依赖它的阶段失效（阶段指纹 = 命令 + 显式声明的 `deps` 内容 sha256，记入状态；照 DVC 的思路，不引入 DVC） | **[实测] 通过**（`tests/test_fingerprint.py`，6 项） |
+| AC6 | `approval` 阶段：无记录的批准不得继续；批准绑定阶段指纹（命令 + check + deps 内容），产物一变旧批准作废；绑定阶段 id；运行器从不写批准记录 | **[实测] 通过**（`tests/test_approval.py`） |
+| AC8 | 任务完成时对 journal 与 task.json 做凭据扫描；埋入凭据 → 完成被拒（D9：不再接 Longhaul gate） | **[实测] 通过**（`tests/test_secrets.py`；断行的日志行按纯文本扫描） |
 | AC9 | Hermes 宿主跑通一个真实阶段（清洗环境，结果被捕获）——按需集成测试，不进 CI | 未做 |
 | AC10 | 第一个真实客户：视频流水线（下载→转写→抽帧→OCR→成稿→交付）在短视频上端到端跑通；OCR 期间被杀，续跑后最终产物哈希与不中断的一次相同 | 未做 |
 
@@ -89,7 +90,7 @@
 
 ## 7. 已知缺口与风险
 
-- **[实测，已知缺口]** 若运行器恰在 `Popen` 与状态保存之间被 SIGKILL，子进程的 pgid 丢失，该孤儿不会被清。M1 修。
+- **[已修，2026-11-01]** 运行器恰在 `Popen` 与状态保存之间被 SIGKILL 时 pgid 会丢失。现在每次尝试给子进程环境注入 `MAKEEXTREME_RUN_ID`，恢复时按它扫 `/proc/*/environ` 杀掉整组，不依赖 task.json 里的 pgid（`tests/test_approval.py::OrphanGap`，变异 M6 被抓）。残余：仅 Linux；改了 uid 的子进程读不到 environ。
 - **与 Longhaul 重复**：靠 F2 的"协议/运行时"分工控制。若 M1 时发现要改 Longhaul 的 schema，停下来先和你谈。
 - **范围膨胀成框架**：靠"无失败测试不加字段"控制。
 - **宿主污染基线 [推断]**：**[实测]** `claude -p --model sonnet` 能正常回复（Claude CLI 已重新登录），

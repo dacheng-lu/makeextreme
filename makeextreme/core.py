@@ -1,12 +1,15 @@
 """makeextreme core: crash-safe stage runner. Standard library only, Linux (uses /proc).
 
 Exit codes of `run`: 0 complete, 2 a stage failed, 3 locked by a live runner, 4 waiting for
-approval, 5 a crashed irreversible stage needs `resolve`, 64 invalid stages.json.
+approval, 5 a crashed irreversible stage needs `resolve`, 6 completion refused (secret-shaped
+value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json.
 """
 import getpass, hashlib, json, os, signal, subprocess, sys, tempfile, time
 
+from . import secret_scan
+
 RUN_ID_ENV = "MAKEEXTREME_RUN_ID"
-EX_FAILED, EX_LOCKED, EX_AWAITING, EX_UNCERTAIN, EX_SPEC = 2, 3, 4, 5, 64
+EX_FAILED, EX_LOCKED, EX_AWAITING, EX_UNCERTAIN, EX_SECRET, EX_SPEC = 2, 3, 4, 5, 6, 64
 
 
 class SpecError(Exception):
@@ -174,6 +177,27 @@ def reap(s):
     return sorted(killed)
 
 
+def secret_hits(d):
+    """[{file, path, kind}] for every secret-shaped value in the task's own record files (never the value)."""
+    hits = []
+    for name in ("task.json", "journal.jsonl", "approvals.jsonl"):
+        p = os.path.join(d, name)
+        if not os.path.exists(p):
+            continue
+        with open(p) as f:
+            text = f.read()
+        for n, chunk in enumerate([text] if name == "task.json" else text.splitlines(), 1):
+            if not chunk.strip():
+                continue
+            try:
+                found = secret_scan.scan_state(json.loads(chunk))
+            except ValueError:  # a line torn by a crash: scan it as plain text
+                found = [("$", k) for k in secret_scan.scan_text(chunk)[:1]]
+            where = "" if name == "task.json" else f" line {n}"
+            hits += [{"file": name, "path": path + where, "kind": kind} for path, kind in found]
+    return hits
+
+
 def approvals_path(d):
     return os.path.join(d, "approvals.jsonl")
 
@@ -253,7 +277,16 @@ def _run(t, d):
             t.state["status"] = "failed"
             t.save()
             return EX_FAILED
+    hits = secret_hits(d)
+    if hits:  # F10: a credential in the record means the task is not complete
+        t.state.update(status="refused_secret", secret_hits=hits)
+        t.save()
+        t.log("refused_secret", hits=len(hits))
+        for h in hits:
+            print(f"refused: {h['kind']} in {h['file']} at {h['path']}", file=sys.stderr)
+        return EX_SECRET
     t.state["status"] = "complete"
+    t.state.pop("secret_hits", None)
     t.save()
     return 0
 
