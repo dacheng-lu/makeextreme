@@ -11,3 +11,7 @@
 | Longhaul `scripts/secret_scan.py`（[dacheng-lu/longhaul](https://github.com/dacheng-lu/longhaul)） | `af52cd8`（v1.1） | Apache-2.0（见该仓库 LICENSE；文件头注明移植自本地 context-handoff 校验器，MIT） | **已拷贝**为 `makeextreme/secret_scan.py`（2026-11-01）：正文与 `af52cd8` 逐字节相同，仅在文件头加了出处注释；Longhaul 与本项目作者相同（dacheng-lu），LICENSE 为同一份 Apache-2.0 文本 |
 | DVC | 3.67.1（仓库现为 `treeverse/dvc`） | Apache-2.0（GitHub API 与已装发行包内 LICENSE 均核对） | 只借"阶段指纹"想法；仅作被测对象，未拷贝 |
 | chenhz01/resilient-agent-toolkit-v2 | `ad767d0` | MIT | Copyright (c) 2026 resilient-agent-toolkit contributors（仅作被测对象，未拷贝） |
+
+## 图片
+
+`assets/logo.jpg` 由项目所有者提供；`assets/social-preview.png`（1280×640，供 GitHub 的 Social preview 使用）由该 logo 缩放到 640 像素高、左右用其最外侧的像素列延展而成，没有加任何内容。本仓库的 Apache-2.0 许可证不授予把项目名称或 logo 当作商标使用的权利（许可证第 6 条）。

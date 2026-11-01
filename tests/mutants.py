@@ -198,16 +198,22 @@ mut("T4_relative_task_path_breaks", TICK, 'task=$(cd "${1:?usage: cron_tick.sh <
     'task=${1:?usage: cron_tick.sh <task_dir>}', (CRON, "relative_task"), "a relative task path breaks once the script changes into the repository")
 
 README_T = "test_readme.py"
-mut("R1_zh_test_count_is_wrong", "README.zh.md", " 个测试（`python -m unittest", "7 个测试（`python -m unittest", (README_T, "numbers"),
-    "the Chinese README quotes a test count the repository does not have")
-mut("R2_de_loses_an_exit_code", "README.de.md", "`64` ungültige", "`65` ungültige", (README_T, "exit_code"),
-    "the German README lists a wrong exit code for an invalid spec")
+mut("R1_zh_test_count_is_wrong", "README.md", " 个测试（`python -m unittest", "7 个测试（`python -m unittest", (README_T, "numbers"),
+    "the Chinese section quotes a test count the repository does not have")
+mut("R2_de_loses_an_exit_code", "README.md", "`64` ungültige", "`65` ungültige", (README_T, "exit_code"),
+    "the German section lists a wrong exit code for an invalid spec")
 mut("R3_en_makes_a_comparative_claim", "README.md", "Not compared with any other tool, so no ranking claim is made.",
-    "Faster than any other tool.", (README_T, "comparative"), "the English README claims to beat other tools")
-mut("R4_zh_loses_the_link_to_de", "README.zh.md", "[Deutsch](README.de.md)", "Deutsch", (README_T, "other_two"),
-    "the Chinese README no longer links to the German one")
-mut("R5_en_names_another_version", "README.md", "Version 1.0.0,", "Version 1.0.1,", (README_T, "required_facts"),
-    "the English README names a version the code does not have")
+    "Faster than any other tool.", (README_T, "comparative"), "the English section claims to beat other tools")
+mut("R4_language_bar_loses_de", "README.md", "[Deutsch](#deutsch)", "Deutsch", (README_T, "navigation"),
+    "the language bar no longer links to the German section")
+mut("R5_en_names_another_version", "README.md", "Version 1.0.0, one author", "Version 1.0.1, one author",
+    (README_T, "required_facts"), "the English section names a version the code does not have")
+mut("R6_logo_reference_is_broken", "README.md", 'src="assets/logo.jpg"', 'src="assets/logo-missing.jpg"',
+    (README_T, "logo"), "the header shows a logo file that does not exist")
+mut("R7_de_loses_a_subsection", "README.md", "### Grenzen", "Grenzen", (README_T, "navigation"),
+    "the German section has one subsection fewer than the others")
+mut("R8_a_link_points_nowhere", "README.md", "[tests/](tests/)", "[tests/](tests-missing/)", (README_T, "relative_link"),
+    "the file table links to a directory that does not exist")
 
 _controls = {}
 
