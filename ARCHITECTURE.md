@@ -33,7 +33,7 @@
 
 **硬规则**
 - F2a 不依赖 Longhaul 的代码和 schema（2026-11-01，D9）：只拷贝 `scripts/secret_scan.py`（取自 v1.1 `af52cd8`，Apache-2.0，随 `NOTICE.md` 署名）。v1.1 的 gate、状态格式一律不接。
-- F2b 不向 `~/Projects/longhaul` 写任何东西。**[实测]** 它的工作树正在做 v1.2（eval harness），
+- F2b 不向 Longhaul 仓库写任何东西。**[实测]** 它的工作树正在做 v1.2（eval harness），
   有未提交改动，读取时测试 130 项中 1 项失败（`test_declared_mutant_scores_reproduce_on_the_oracle`）。那是它自己的在研状态，不归我们修。
 
 ## 3. 冻结的设计决定
@@ -71,8 +71,8 @@
 | AC5 | 产物改动后，只让依赖它的阶段失效（阶段指纹 = 命令 + 显式声明的 `deps` 内容 sha256，记入状态；照 DVC 的思路，不引入 DVC） | **[实测] 通过**（`tests/test_fingerprint.py`，7 项；符号链接依赖按"链接文字 + 目标当前内容"哈希，环有保护：`tests/test_audit_findings.py::SymlinkDeps`） |
 | AC6 | `approval` 阶段：无记录的批准不得继续；批准绑定阶段指纹（命令 + check + deps 内容），产物一变旧批准作废；绑定阶段 id；运行器从不写批准记录；**一次批准只授权一次执行**：阶段一启动就消耗它，只有启动之后写入的批准才算数，所以产物改走再改回来也不会让旧批准复活（审计 #3 发现；`ApprovalIsConsumedByUse`）。`resolve --retry` 是明确的人为决定，但只针对**失败的那一次运行**：它记下失败时的指纹（`retry`），让**同一个产物**再跑一次，启动时即用掉；产物变了就要新批准，也不会把其他内容的旧批准带回来（审计 #4 发现，原先 retry 清掉 `started` 等于全部赦免；`RetryIsTiedToTheFailedRun`）。批准已被用掉而在等待时，`run` 在 stderr 说明原因。`retry` 标记在产物改成别的内容（C）时**不会消失**，产物回到失败的那个内容时仍然生效一次，直到下一次启动把它用掉（审计 #5 测得，按"一次重试"算不是违规，只是此前没写）；`resolve --retry` 之后又改了命令/check/deps 则指纹不同、标记无效，需要重新 `approve`，且没有提示（失败安全） | **[实测] 通过**（`tests/test_approval.py`） |
 | AC8 | 任务完成时对 journal 与 task.json 做凭据扫描；埋入凭据 → 完成被拒（D9：不再接 Longhaul gate） | **[实测] 通过**（`tests/test_secrets.py`；断行的日志行按纯文本扫描） |
-| AC9 | Hermes 宿主跑通一个真实阶段（清洗环境，结果被捕获）——按需集成测试，不进 CI | 未做 |
-| AC10 | 第一个真实客户：视频流水线（下载→转写→抽帧→OCR→成稿→交付）在短视频上端到端跑通；OCR 期间被杀，续跑后最终产物哈希与不中断的一次相同 | 未做 |
+| AC9 | Hermes 宿主跑通一个真实阶段（清洗环境，结果被捕获）——按需集成测试，不进 CI | **[实测] 通过**（2026-11-01，`examples/hermes_host/ac9.py`）：一个阶段在 `env -i` 下运行 `hermes chat --oneshot`（ollama-cloud 的 deepseek-v4.1-flash:1017），答案以 `OK` 开头被捕获并过检查；对照 1：模型名写错 → 阶段失败（退出码 2）且不留答案文件；对照 2：同一阶段不加 `env -i` → 金丝雀检查失败（退出码 2），证明"环境已清洗"这条检查看得见泄漏。「Hermes 能调用 makeextreme」本身未单独做测试：本仓库的所有运行都是经 Hermes 的终端工具启动的，没有更强的证据 |
+| AC10 | 第一个真实客户：视频流水线（下载→转写→抽帧→OCR→成稿→交付）在短视频上端到端跑通；OCR 期间被杀，续跑后最终产物哈希与不中断的一次相同 | **[实测] 通过**（2026-11-01，`examples/video_pipeline/ac10.py`）：38 秒的 YouTube Short（1080×1920），7 个阶段（交付阶段带 `approval`）；对运行器 `kill -9` 落在 OCR 阶段（分别在第 1、4、9、17 帧之后，另有一次下载自真实 URL）后续跑：7 个产物（src.mp4、audio.wav、asr.txt、frames、ocr、brief.md、deliver/brief.md）与不中断的一次逐字节相同，最终哈希在 5 次运行里恒为同一个；journal 证明除 OCR（2 次）外没有阶段启动超过 1 次；kill 后留下 2 个孤儿进程，续跑后 0 个。对照：对核心做 3 个变异（已完成阶段重跑 / 不回收孤儿 / 不认崩溃）验收全部变红（`ac10_mutants.py`），未变异的拷贝为绿。**转写不是逐位确定的**（实测：同一段音频、固定语言、单线程等 3 种办法，约每 6 到 10 次有 1 次不同；原因未查），所以 asr 阶段按音频哈希缓存转写；AC10 因此证明"恢复正确"，不证明"ASR 确定" |
 
 **M0 的验证方式 [实测]**：`spike/test_m0.py` 11 项全过；随后做了变异测试——故意破坏运行器 5 处
 （去掉清孤儿、退出码 0 即完成、永不跳过、不接管死锁、不记 interrupted），**5 个变异全部被对应的探针抓到**，
@@ -85,9 +85,9 @@
 - **M0 可行性**（已完成）：`spike/runner.py` 约 130 行 + 11 个探针。
 - **M1 核心**（**代码完成 2026-11-01，Sonnet 五轮里程碑审计，第五轮 PASS（0 BLOCKER / 0 MAJOR / 1 MINOR 已记入 §7 / 3 PLAN 已改文档）**；提交 `0abc449`、`102f57c`，审计修复见下）：AC5、AC6、AC8 已补；孤儿缺口已闭合；spike 拆成包 `makeextreme/`（`core.py`、`secret_scan.py`、`__main__.py`）。审计前自测（2026-11-01）找出 5 个真缺陷并已修（并发锁 D18、审批阶段失败自动重跑 D17、损坏的 `task.json`、`approvals.jsonl` 里一行损坏、`stages.json` 缺失/非法/任务目录不存在）。**Sonnet 里程碑审计 #1（2026-11-01）：FAIL，4 个 MAJOR + 7 个 MINOR，全部复现**：SIGTERM 落在两个阶段之间会把刚完成的阶段标成 `interrupted`（普通阶段重跑、审批阶段变 `uncertain`）；被中断的普通阶段下次 `run` 不回收子进程；`check` 输出非 UTF-8 让运行器永久崩溃；符号链接依赖只按链接文字哈希。均已修（`tests/test_audit_findings.py`，每条先红后绿），另修 `approve` 双次哈希、记录文件尾行被截断后下一条被粘住、不可读依赖的栈追踪、`atomic_write` 遗留临时文件，补齐 4 个存活变异体的测试，文档漂移已改。**Sonnet 再审 #2（同日）：FAIL，1 个 MAJOR + 7 个 MINOR + 1 个 PLAN**，前 4 个 MAJOR 均确认已修。新的 MAJOR 是我自己的 D17 实现留下的缝：审批阶段失败先以 `failed` 落盘、随后才改 `uncertain`，两次写之间收到 SIGTERM 或 SIGKILL，下一次普通 `run` 会重跑不可逆命令（SIGKILL 的情形在 D17 之前就存在）——现在第一次写盘就是 `uncertain`。其余：`atomic_write` 在 `mkstemp` 之后的信号窗口（现在屏蔽 SIGTERM/SIGINT 直到清理就位）、符号链接文字不是 UTF-8 时崩溃且 `approve` 只显示链接文字（现在链接按"文字 + 目标内容"合成一个哈希）、依赖目录嵌套超过递归上限（现为干净拒绝）、指向同一目录的链接扇出导致指数耗时（现按真实路径记忆化）、运行中依赖变得不可读时任务停在静默的 `running`（现记 `refused`）、记录文件含非 UTF-8 字节时崩溃、`UnreadableDep` 测试靠 root 判断跳过（现用 `/proc/self/mem` 软链，任何 uid 都读不了）、以及三个测试缺口。现 73 个测试（Python 3.11 与 3.14 均过）+ `tests/mutants.py` 58 个变异体（`python tests/mutants.py all`，约 2 分 40 秒）；spike 用 `python spike/test_m0.py`（11/11）。**Sonnet 再审 #3（同日）：FAIL，1 个 MAJOR + 1 个 MINOR**；审批阶段状态机 164 种信号/终止位置均安全，记忆化 150 棵随机树 1927 次单点修改零漏报，上一轮全部修复确认。新的 MAJOR：批准记录只回答"曾经批准过这个内容吗"、从不被消耗——批准 A、跑完（不可逆命令执行一次）、依赖改成 B（要求重新批准，已完成记录被抹掉）、再改回 A，旧批准复活，下一次普通 `run` 第二次执行不可逆命令，无需任何新决定、无需杀进程（`git checkout` 或撤销就能触发）。现已改为"一次批准授权一次执行"：启动时记录 `started`，只有之后写入的批准才算数；`resolve --retry` 清掉 `started`。MINOR：`resolve` 没有信号处理函数，SIGTERM 落在临时文件窗口会留下临时文件（现与 `run` 一样先解开再退出）。现 77 个测试 + 62 个变异体（约 3 分钟）。**Sonnet 再审 #4（同日，最后一轮）：FAIL，1 个 MAJOR + 3 个 MINOR**；上一轮两个发现确认已修，变异表 62/62 红，状态机钩子扫描无安全发现，`resolve` 的信号处理在异常和 SIGINT 下正确。MAJOR：`resolve --retry` 为了让"明确重试"可用，把 `started` 删掉，之后 `since=0`，**所有**已消耗的批准（包括其他内容的）复活——批准 A 并执行、B 批准后失败（uncertain）、`resolve --retry`、产物改回 A、`run`：A 被第二次执行（`pay.out` 3 行而非 2 行），不需要信号，只需 D17 本来就预期的一次失败加一次 retry。现为：retry 只记失败那次运行的指纹，`started` 保留；retry 在下一次启动时即消耗。MINOR 一并处理：被用掉的批准不再静默等待（stderr 说明）；`started` 被手改成非数字时安全关闭，不再 Traceback；task.json 损坏时的提示改为同时挪开 `approvals.jsonl`（否则已执行的阶段会因批准仍在而再次放行）。审计员另报且我不再处理的：时钟回拨/同一毫秒导致新批准被忽略（失败安全，已有提示）；task.json 被删除后批准复活（人为操作，提示已改）。现 84 个测试 + 68 个变异体（约 3 分钟）。**审计到此收口**（用户批准的 A：第四轮后不论结果都不再开新一轮）。
 **Sonnet 再审 #5（同日，用户选 B，只审 retry 修复）：PASS**，0 BLOCKER / 0 MAJOR / 1 MINOR / 3 PLAN；上一轮 MAJOR 与 3 个 MINOR 确认全部修复，变异表 68/68 红，84 测试在 3.11 与 3.14 都过，状态机 28 个信号/终止钩子位置无违规，并发 `resolve`/`run` 无多余执行。MINOR 与 PLAN 见 AC6、D17、§7；代码在 PASS 之后没有改动。`requesting-code-review` 补丁与 skill `makeextreme-stage-design` 已完成。**未做**：Sonnet 再审通过后才算 M1 完成。
-- **M2 宿主**：shell + Hermes 两个 host，AC9。
-- **M3 第一个客户**：视频流水线（AC10）；之后接 `grill-me` cron。
-- **M4 收口**：README、CI、与 Longhaul 钉版本对账。
+- **M2 宿主**：shell + Hermes 两个 host，AC9。**已做（2026-11-01，shell host 即 `sh -c` 的所有测试，Hermes host 见 AC9）。**
+- **M3 第一个客户**：视频流水线（AC10）；之后接 `grill-me` cron。**AC10 已做（2026-11-01）；`grill-me` cron 未接。**
+- **M4 收口**：README、CI、与 Longhaul 钉版本对账。**README 三语已写（`tests/test_readme.py` 5 个测试守住数字和必备事实）；cron 启动脚本 `examples/cron_tick.sh`（D12，7 个测试、4 个变异体）已写；CI、Longhaul 钉版本对账、PyPI 未做。**
 
 ## 7. 已知缺口与风险
 
@@ -110,7 +110,7 @@
 
 - **D1 项目名**：**已定** — 仓库 `makeextreme`，展示名"登峰 · Makeextreme"。
 - **D2 钉版本**：钉 Longhaul v1.1（`af52cd8`）——默认采用。Longhaul v1.2 目前未发布且在修（见聊天），不依赖它。
-- **D3 仓库位置**：独立仓库 `~/Projects/makeextreme`——默认采用。
+- **D3 仓库位置**：独立仓库 `makeextreme`——默认采用。
 - **D4 第一个客户**：视频流水线——默认采用。
 - **D5 M1 的执行方式**：**已定 = A**（2026-10-31，用户回复）。我自己写；Sonnet 在里程碑处审计；Opus 只做最终审；不动 GPT-6-Astra。
 - **D6 交付内容的来源**：**已定**（2026-10-31，用户指令）：结合 Superpowers、ECC、Ponytail 与本地 Hermes 实用且适用的 skill。取舍台账见 `docs/SOURCES.md`。
@@ -123,12 +123,13 @@
 - **D11 预算**：**已定 = 6B**。无封顶，做完 M4。
 - **D12 崩溃后谁续跑**：**已定 = 5A**（2026-11-01）。cron tick 只当启动器和报告员（沿用本地 `scheduled-agent-loops` 的模式：tick 有 3 分钟硬中断，worker 在后台用 `flock -n` 起），登峰当 worker。**登峰里不写看门狗/重启守护代码**；只在文档里放一份启动脚本示例。原因：Longhaul v1.1 自述是协议而非运行时（计划 §8 "无运行时、调度、进程重启"），不能重启进程；登峰的单写者锁和"已完成则什么都不做"让每个 tick 都启动一次是安全的。
 - **D13 许可证**：**已定 = 7A** Apache-2.0（与 Longhaul、被拷贝的 `secret_scan.py` 一致）。`LICENSE` 已放入仓库（与 Longhaul 的同一文本）。版权行在首次公开前补全。
-- **D14 首次公开推送**：**已定 = 8B** AC10 通过后才公开。推送不可逆：只在用户明确说"推"之后做，并先过三关——凭据与路径扫描（仓库含 `/home/dav` 路径与 `trial/`；扫描还必须覆盖 **提交元数据**——全部提交的作者与提交者是同一个 `dacheng-lu` 加用户邮箱，与 Longhaul 已公开提交相同身份，但要在推送前再确认一次——以及 `~/…` 路径与 NOTICE 里的用户名）、README 只写已测量事实（D8）、商标与域名检查（目前都没查）。
+- **D14 首次公开推送**：**已定 = 8B** AC10 通过后才公开。推送不可逆：只在用户明确说"推"之后做，并先过三关——凭据与路径扫描（扫描还必须覆盖 **提交元数据**——全部提交的作者与提交者是同一个 `dacheng-lu` 加用户邮箱，与 Longhaul 已公开提交相同身份，但要在推送前再确认一次——以及 `~/…` 路径与 NOTICE 里的用户名）、README 只写已测量事实（D8）、商标与域名检查。**2026-11-01 已做：** 路径已清理（`trial/result_dvc.json` 里的绝对路径改为 `$HOME`，NOTICE、SOURCES、ARCHITECTURE 里的本机路径改为描述），密钥形状与个人信息词扫描无命中；README 数字由 `tests/test_readme.py` 对照仓库实测值；商标与域名只做了**非权威**检查（GitHub 无同名仓库和账号，PyPI 与 npm 的 `makeextreme` 为 404，`makeextreme.com` 的 whois 显示 No match，`.dev/.io/.org/.net/.de` 无 DNS 记录；网页检索未见同名品牌；USPTO、EUIPO、DPMA、CNIPA 的官方库没有查——它们是脚本拿不到的页面），中文名「登峰」是常用词，仅作副标题。
 - **D15 分发**：**已定 = 9A** 只放 GitHub，`git clone` 即用，纯标准库；PyPI 等 M4 之后再议。
 - **D16 README 语言**：**已定 = 10D** 英文、中文、德文三语。**风险（我的意见）**：三语是三份要同步的文档；Longhaul 的审计（DOC2）已经发现过"zh/de 缺了一条提示却没有测试抓到"。因此 README 的每个语言段落都必须有测试：存在、且含同一组必备事实（平台、审批威胁模型声明、测量表链接）。
 
 **审计前自测的决定（2026-11-01，我代用户定，可否决）**
 - **D17 不可逆阶段失败 = `uncertain`**：`approval` 阶段退出码非 0，或退出码 0 但 check 不过，**都不再标 `failed`**，而是标 `uncertain`（退出码 5，journal 记原因；`resolve --retry` 只重跑那一次失败的产物；**第一次写盘就是 `uncertain`**——审计 #2 发现先写 `failed` 再改会留下一个被杀就会重跑的窗口）；后续普通 `run` 一律拒绝，不重跑；只有 `resolve --retry`（记下失败那次运行的指纹，让**同一个产物**再跑一次，不动已用掉的批准；见 AC6）或 `resolve --done`（check 必须通过）才放行。原因：它可能在失败之前已经动手（或动了手却没留证据）；旧行为是下一次 `run` 悄悄再执行一次不可逆命令。代价：一次退出码 1 的失败也要多一条 `resolve` 命令。普通阶段不变：`failed`，退出码 2，再跑即重试。
+- **D19 首次公开推送不经 Opus 终审（一次性破例）**：用户 2026-11-01 在选项 A–D 里选 **B**，原话"一次破例，出了成品 push，回头再做深度审计"。D5 原定"Opus 只做最后一次终审"，这一次省掉；之前的 Sonnet 里程碑审计（M1 核心五轮，第五轮 PASS）不受影响。后果与补偿：README 的状态一节如实写明"在最终独立审计之前公开"；AC9、AC10 与 cron 启动脚本只经作者自己的测试与变异体把关，**没有**独立审计员看过；深度审计（Opus 终审，覆盖 M1 之后新增的全部代码：`examples/`、`tests/test_cron_tick.py`、`tests/test_readme.py`）是欠账，推送后补。这条不改变其他任何规则：推送前的三关与"明确说推"仍然适用。
 - **D18 运行锁 = `flock`**：`<task>/lock` 上的排他 `flock`，由打开的文件描述符持有，进程死亡时内核释放：没有"过期锁"要判断，也没有 pid 复用问题。锁文件**永不删除**（删除会让第二个运行器锁旧 inode、第三个新建文件，重新出现双持锁）；内容只是给拒绝信息用的备注。限制：仅 Linux，且要求任务目录所在文件系统支持 `flock`（NFS 另当别论，未测）。
 - **已知限制（Sonnet 里程碑审计评估后补全）**：审批检查与阶段命令真正读到产物之间有一个毫秒级窗口，产物可在此期间被改；运行器不在阶段结束后重新哈希（对自己会改写自己依赖的阶段会误报，所以没做）。**后果（E7，已实测）**：一个会改写自己 `deps` 的阶段每次 `run` 都会因指纹变化而重跑，AC3 对它不成立；若它是 `approval` 阶段，每次重跑都要重新批准，再批准就再执行一次不可逆命令。`approve` 以前先后哈希两次，显示的哈希可能与绑定的不同，现已改为只哈希一次（`ApproveHashesOnce`）。这与 D10 一致——批准只防意外，不防有意。已完成阶段被跳过时不会重跑它的 check（AC3 要求"什么都不执行"），所以完成后被删掉的产物不会让阶段失效，除非它是声明的 `deps`。
 

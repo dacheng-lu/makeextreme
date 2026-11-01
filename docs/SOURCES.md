@@ -3,14 +3,14 @@
 用户指令（D5=A 之后）：交付内容要结合 **Superpowers、ECC、Ponytail、本地 Hermes 里实用且适用的 skill**。
 本页是"哪一块从哪来、为什么取、为什么不取"的台账。原则沿用 pstack 那次的结论：**学内容，不学结构**；以及 Ponytail 的梯子：**仓库里已有的先复用，不重写**。
 
-## 0. 来源（版本已钉，本地克隆在 `~/study/sources/`，不进本仓库）
+## 0. 来源（版本已钉，作者本地有克隆，不进本仓库）
 
 | 来源 | 钉死版本 | 许可 | 实测规模 |
 |---|---|---|---|
 | `obra/superpowers` | `2ce8aa15`（2026-10-21） | MIT © 2025 Jesse Vincent | 15 个 skill |
 | `affaan-m/ECC`（前身 everything-claude-code） | `b38be6a7`（2026-10-29） | MIT © 2026 Affaan Mustafa | 314 个 skill、71 个 agent、98 个 command |
-| `DietrichGebert/ponytail` | 已读，笔记在 `~/study/ponytail/` | MIT | 已装为本地 skill `ponytail` |
-| 本地 Hermes skills | `~/.hermes/skills/` | — | 见 §2 |
+| `DietrichGebert/ponytail` | 已读，笔记在作者本地 | MIT | 已装为本地 skill `ponytail` |
+| 作者本地的 Hermes skills | 本机 skill 目录 | — | 见 §2 |
 
 **许可处理**：目前只借想法，没有拷贝原文。**一旦拷贝任何原文段落，必须同时带上对应的版权声明和 MIT 许可文本**（见 `NOTICE.md`）。
 
@@ -74,3 +74,10 @@
 - ECC 与 Superpowers 的 skill 我读了**目录、描述、以及少数几个的全文**（`verification-before-completion`、`loop-design-check`、`change-impact`、`operator-approval-loop` 的前部、`executing-plans` 的 completion contract 一节、`writing-skills` 开头）。**其余只读到标题或描述，没有通读**；表中标 [读描述] 的结论只来自描述文字。
 - 没有运行过 ECC / Superpowers 的任何 skill、钩子或安装器。
 - "本地早已有 Superpowers 主干"这一条，依据是三个 skill 头部的 `author` 字段，**没有逐段比对内容的相似度**。
+
+## 另见（2026-11-01，未取用、未评测）
+
+网页检索时看到的同类项目，只读了搜索结果里的简介，没有读代码，没有取用任何东西：
+`areeves/revenant`（crash-safe、可恢复、基于文件的 Python 流水线框架；README 里列了它）、
+`TokonoMix/agents-never-sleep`（长跑 agent 的恢复与看门狗）、`deepansh-saxena/DuraLang`（基于 Temporal 的崩溃恢复示例）、
+`apache/maka`（运行时恢复架构文档）。没有和它们做过对比，所以不对它们的优劣下任何结论。

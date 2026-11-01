@@ -184,6 +184,31 @@ mut("RS1_resolve_not_interruptible", CORE, '    old = signal.signal(signal.SIGTE
     '    old = signal.getsignal(signal.SIGTERM)', (FIND, "ResolveIsInterruptible"),
     "SIGTERM kills resolve on the spot and leaves its temp file")
 
+CRON = "test_cron_tick.py"
+TICK = "examples/cron_tick.sh"
+mut("T1_busy_is_a_failure", TICK, '  3) echo "makeextreme: busy (another runner holds the lock)"; rc=0 ;;',
+    '  3) echo "makeextreme: busy (another runner holds the lock)" ;;', (CRON, "busy"),
+    "a tick that meets a live runner exits 3, which cron mails as a failure")
+mut("T2_approval_wait_is_a_failure", TICK, 'approve $task <stage>"; rc=0 ;;', 'approve $task <stage>" ;;', (CRON, "approval_wait"),
+    "waiting for a human reads as a failed tick")
+mut("T3_uncertain_is_swallowed", TICK, '  5) echo "makeextreme: an UNCERTAIN stage needs a human: python -m makeextreme resolve $task <stage> --done | --retry" ;;',
+    '  5) echo "makeextreme: an UNCERTAIN stage needs a human: python -m makeextreme resolve $task <stage> --done | --retry"; rc=0 ;;',
+    (CRON, "uncertain"), "an uncertain irreversible stage exits 0 and nobody is alerted")
+mut("T4_relative_task_path_breaks", TICK, 'task=$(cd "${1:?usage: cron_tick.sh <task_dir>}" 2>/dev/null && pwd) || { echo "makeextreme: no such task directory" >&2; exit 64; }',
+    'task=${1:?usage: cron_tick.sh <task_dir>}', (CRON, "relative_task"), "a relative task path breaks once the script changes into the repository")
+
+README_T = "test_readme.py"
+mut("R1_zh_test_count_is_wrong", "README.zh.md", " 个测试（`python -m unittest", "7 个测试（`python -m unittest", (README_T, "numbers"),
+    "the Chinese README quotes a test count the repository does not have")
+mut("R2_de_loses_an_exit_code", "README.de.md", "`64` ungültige", "`65` ungültige", (README_T, "exit_code"),
+    "the German README lists a wrong exit code for an invalid spec")
+mut("R3_en_makes_a_comparative_claim", "README.md", "Not compared with any other tool, so no ranking claim is made.",
+    "Faster than any other tool.", (README_T, "comparative"), "the English README claims to beat other tools")
+mut("R4_zh_loses_the_link_to_de", "README.zh.md", "[Deutsch](README.de.md)", "Deutsch", (README_T, "other_two"),
+    "the Chinese README no longer links to the German one")
+mut("R5_en_names_another_version", "README.md", "Version 1.0.0,", "Version 1.0.1,", (README_T, "required_facts"),
+    "the English README names a version the code does not have")
+
 _controls = {}
 
 

@@ -17,7 +17,7 @@
  {
   "probe": "AC1d pipeline completes",
   "pass": true,
-  "detail": "rc=0 c.out=True; stderr=\" Process '/home/dav/.hermes/cache/scratch/dvcenv/bin/dvc repro' with (Pid 3888457), in RWLock-file 'b.out' had been killed. Auto removed it from the lock file.\\n\""
+  "detail": "rc=0 c.out=True; stderr=\" Process '$HOME/.hermes/cache/scratch/dvcenv/bin/dvc repro' with (Pid 3888457), in RWLock-file 'b.out' had been killed. Auto removed it from the lock file.\\n\""
  },
  {
   "probe": "AC2 exit 0 + artifact content wrong (needs content check) -> NOT complete",
@@ -42,7 +42,7 @@
  {
   "probe": "AC4 second concurrent runner refused",
   "pass": true,
-  "detail": "stage executed 1x; 2nd rc=255; msg=\"there are no processes with such PIDs, you can manually remove '/home/dav/.hermes/cache/scratch/tmpuu0t0b04/.dvc/tmp/rwlock' and try again.\\n\""
+  "detail": "stage executed 1x; 2nd rc=255; msg=\"there are no processes with such PIDs, you can manually remove '$HOME/.hermes/cache/scratch/tmpuu0t0b04/.dvc/tmp/rwlock' and try again.\\n\""
  },
  {
   "probe": "AC7 SIGTERM -> exit 143 and a persisted 'interrupted' record",
