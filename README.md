@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.jpg" alt="Makeextreme · 登峰 logo" width="640">
+  <img src="assets/logo-readme.svg" alt="Makeextreme · 登峰 logo" width="640">
 </p>
 
 # 登峰 · Makeextreme
