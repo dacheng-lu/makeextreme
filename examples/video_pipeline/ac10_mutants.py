@@ -15,8 +15,8 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 
 MUTANTS = [
     ("M1_finished_stages_are_rerun",
-     '            if s.get("digest") == fp:\n                t.log("skip", stage=sid)\n                continue',
-     '            if False:\n                t.log("skip", stage=sid)\n                continue',
+     '            if s.get("digest") == fp:\n                bad = drifted(s.get("sha256"), now)\n                if not bad:\n                    t.log("skip", stage=sid)\n                    continue',
+     '            if False:\n                bad = drifted(s.get("sha256"), now)\n                if not bad:\n                    t.log("skip", stage=sid)\n                    continue',
      "a finished stage is run again on resume"),
     ("M2_orphans_are_not_reaped",
      "            for pg in reap(s):\n                t.log(\"reaped\", stage=sid, pgid=pg)\n        if sp.get(\"approval\") and not (approved(",
@@ -26,6 +26,10 @@ MUTANTS = [
      'if s["status"] in ("running", "interrupted"):  # the previous runner died or was stopped mid-stage',
      'if False:  # the previous runner died or was stopped mid-stage',
      "a stage left `running` by a killed runner is not recognised"),
+    ("M4_outputs_are_not_checked",
+     "                bad = drifted(s.get(\"sha256\"), now)",
+     "                bad = []",
+     "a finished stage is skipped without looking at its declared outputs again"),
 ]
 
 

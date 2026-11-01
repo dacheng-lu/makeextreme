@@ -128,7 +128,21 @@ def fingerprint(d, sp, hashes=None):
     `hashes` lets a caller that already hashed the deps (approve) bind exactly what it showed."""
     deps = hashes if hashes is not None else {x: dep_hash(d, x) for x in sp.get("deps", [])}
     doc = {"run": sp["run"], "check": sp["check"], "deps": deps}
+    if sp.get("outputs"):  # only when declared: a stage without outputs keeps its 1.0.0 fingerprint
+        doc["outputs"] = sp["outputs"]
     return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
+
+
+def out_hashes(d, sp):
+    """Content of every declared output right now: {path: hash}, 'missing' for an absent one."""
+    return {x: dep_hash(d, x) for x in sp.get("outputs", [])}
+
+
+def drifted(recorded, now):
+    """The declared outputs whose content is not what the stage recorded when it finished. A record that
+    has nothing to compare with (hand-edited, damaged) drifts every output: never guess it is fine."""
+    rec = recorded if isinstance(recorded, dict) else {}
+    return [x for x, h in now.items() if rec.get(x) != h]
 
 
 def validate_spec(spec):
@@ -148,6 +162,13 @@ def validate_spec(spec):
         deps = sp.get("deps", [])
         if not (isinstance(deps, list) and all(isinstance(x, str) and x for x in deps)):
             raise SpecError(f"stage {sid}: 'deps' must be a list of paths")
+        outs = sp.get("outputs", [])
+        if not (isinstance(outs, list) and all(isinstance(x, str) and x for x in outs)):
+            raise SpecError(f"stage {sid}: 'outputs' must be a list of paths")
+        both = [x for x in outs if x in deps]
+        if both:
+            raise SpecError(f"stage {sid}: 'deps' and 'outputs' overlap ({', '.join(sorted(set(both)))}): a stage "
+                            "that changes one of its own deps has a new fingerprint after every run")
         if sp.get("approval", "required") != "required":
             raise SpecError(f"stage {sid}: 'approval' can only be \"required\"")
         if sp.get("approval") and not deps:
@@ -330,16 +351,24 @@ def _run(t, d):
         sid, s = sp["id"], t.st(sp["id"])
         try:
             fp = fingerprint(d, sp)
-        except SpecError as e:  # a dep became unreadable between stages: say so in the record
+            now = out_hashes(d, sp) if s["status"] == "done" else {}
+        except SpecError as e:  # a dep or output became unreadable between stages: say so in the record
             t.state["status"] = "refused"
             t.save()
             t.log("refused", stage=sid, reason=str(e))
             raise
         if s["status"] == "done":
             if s.get("digest") == fp:
-                t.log("skip", stage=sid)
-                continue
-            t.log("invalidated", stage=sid)  # command or a declared dep changed
+                bad = drifted(s.get("sha256"), now)
+                if not bad:
+                    t.log("skip", stage=sid)
+                    continue
+                why = "output changed since the stage finished"
+                if sp.get("approval"):  # it acted once; whatever happened to its output is not ours to redo
+                    return t.halt("uncertain", sid, EX_UNCERTAIN, "uncertain", reason=why, outputs=bad)
+                t.log("invalidated", stage=sid, reason=why, outputs=bad)
+            else:
+                t.log("invalidated", stage=sid)  # command or a declared dep changed
         if s["status"] in ("running", "interrupted") and sp.get("approval"):
             # an irreversible action may or may not have happened: never repeat it on our own
             for pg in reap(s):
@@ -361,6 +390,7 @@ def _run(t, d):
         s.update(status="running", attempts=s["attempts"] + 1, digest=fp, run_id=run_id,
                  started=round(time.time(), 3))  # spends the approval that released this run
         s.pop("retry", None)  # and the explicit retry, if that is what released it
+        s.pop("sha256", None)  # the old outputs are no longer what this stage stands for
         s.pop("pgid", None)
         s.pop("pg_start", None)
         cur["sid"] = sid
@@ -374,19 +404,26 @@ def _run(t, d):
         t.save()
         rc = proc.wait()
         chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True, errors="replace")
-        ok = rc == 0 and chk.returncode == 0  # exit 0 alone is never "done"
+        try:
+            outs = out_hashes(d, sp)
+        except SpecError:  # an output that cannot be read is no evidence: it counts as absent
+            outs = {x: "missing" for x in sp.get("outputs", [])}
+        missing = [x for x, h in outs.items() if h == "missing"]
+        ok = rc == 0 and chk.returncode == 0 and not missing  # exit 0 alone is never "done"
         # an approval stage that failed is `uncertain` from the first write on: a kill between two
         # writes must never leave `failed` behind (a plain run would repeat the irreversible command)
         s.update(status="done" if ok else ("uncertain" if sp.get("approval") else "failed"), rc=rc, check_rc=chk.returncode,
                  check_out=chk.stdout.strip()[:200])
+        if ok and outs:
+            s["sha256"] = outs  # this key name is exempt from the secret scan; any other turns the hashes into long_hex hits
         for k in ("pgid", "pg_start", "run_id"):
             s.pop(k, None)
         t.save()
-        t.log("end", stage=sid, ok=ok, rc=rc, check_rc=chk.returncode)
+        t.log("end", stage=sid, ok=ok, rc=rc, check_rc=chk.returncode, **({"missing": missing} if missing else {}))
         if not ok and sp.get("approval"):
             # it may have acted before it failed (or acted and left no evidence): not ours to repeat
             return t.halt("uncertain", sid, EX_UNCERTAIN, "uncertain",
-                          reason=f"failed: rc={rc} check_rc={chk.returncode}")
+                          reason=f"failed: rc={rc} check_rc={chk.returncode}" + (f" missing={missing}" if missing else ""))
         if not ok:
             t.state["status"] = "failed"
             t.save()
@@ -465,7 +502,20 @@ def resolve(d, sid, mode):
             if chk.returncode != 0:
                 print("refused: the stage's check does not pass, so it cannot be marked done", file=sys.stderr)
                 return 1
+            try:
+                outs = out_hashes(d, sp)
+            except SpecError:
+                outs = {x: "missing" for x in sp.get("outputs", [])}
+            missing = [x for x, h in outs.items() if h == "missing"]
+            if missing:
+                print("refused: declared output missing, so the stage cannot be marked done: " + ", ".join(missing),
+                      file=sys.stderr)
+                return 1
             s.update(status="done", digest=fingerprint(d, sp), check_rc=0, check_out=chk.stdout.strip()[:200])
+            if outs:
+                s["sha256"] = outs  # this decision takes the outputs as they are now, not any later content
+            else:
+                s.pop("sha256", None)
         else:
             s["status"] = "pending"
             s["retry"] = s.get("digest")  # repeats the run that failed (this artifact) once; `started` stays

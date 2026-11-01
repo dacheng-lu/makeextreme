@@ -17,11 +17,11 @@ sys.path.insert(0, REPO)
 from makeextreme import __version__, core  # noqa: E402
 
 LANGS = {
-    "English": {"anchor": "#english", "tests": r"\b{n} tests\b", "mutants": r"\b{m} mutants\b",
+    "English": {"anchor": "#english", "version": "Version {v}, one author", "tests": r"\b{n} tests\b", "mutants": r"\b{m} mutants\b",
                 "forbidden": ["better than", "faster than", "superior", "best-in-class", "state of the art", "outperform"]},
-    "简体中文": {"anchor": "#zh-cn", "tests": r"{n} 个测试", "mutants": r"{m} 个变异体",
+    "简体中文": {"anchor": "#zh-cn", "version": "版本 {v}，单人开发", "tests": r"{n} 个测试", "mutants": r"{m} 个变异体",
                  "forbidden": ["优于", "胜过", "最好的", "最佳", "领先于", "碾压"]},
-    "Deutsch": {"anchor": "#deutsch", "tests": r"\b{n} Tests\b", "mutants": r"\b{m} Mutanten\b",
+    "Deutsch": {"anchor": "#deutsch", "version": "Version {v}, ein Autor", "tests": r"\b{n} Tests\b", "mutants": r"\b{m} Mutanten\b",
                 "forbidden": ["besser als", "schneller als", "überlegen", "bestes", "übertrifft"]},
 }
 COMMANDS = ["python -m makeextreme run <task_dir>",
@@ -78,8 +78,12 @@ class ReadmeFacts(unittest.TestCase):
     def test_every_language_carries_the_same_required_facts(self):
         have = sections()
         for name in LANGS:
-            for token in COMMANDS + PROSE_FACTS + [__version__]:
+            for token in COMMANDS + PROSE_FACTS:
                 self.assertIn(token, have[name], "the %s section lacks %r" % (name, token))
+            # the statement itself, not any mention: a feature note that says "(1.1.0)" must not satisfy this
+            self.assertIn(LANGS[name]["version"].format(v=__version__), have[name],
+                          "the %s section does not state version %s" % (name, __version__))
+        self.assertIn("Version: **%s** ·" % __version__, have["preamble"], "the page header does not state the version")
         for token in PAGE_FACTS:
             self.assertIn(token, page(), "the page lacks %r" % token)
 

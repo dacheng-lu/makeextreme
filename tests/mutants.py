@@ -29,7 +29,7 @@ CORE_T, FP, APP, SEC, LOCK = ("test_core.py", "test_fingerprint.py", "test_appro
 
 mut("C1_exit0_is_done", CORE, 'ok = rc == 0 and chk.returncode == 0', 'ok = rc == 0', (CORE_T, "ac2"),
     "exit code 0 alone counts as done (the check is ignored)")
-mut("C2_skip_always", CORE, 'if s.get("digest") == fp:\n                t.log("skip"', 'if True:\n                t.log("skip"',
+mut("C2_skip_always", CORE, 'if s.get("digest") == fp:\n                bad = drifted', 'if True:\n                bad = drifted',
     (FP, None), "a done stage is skipped whatever changed")
 mut("C3_fp_ignores_deps", CORE, '"check": sp["check"], "deps": deps}', '"check": sp["check"], "deps": {}}',
     (FP, None), "the stage fingerprint ignores the content of its deps")
@@ -103,7 +103,7 @@ mut("E2_interrupted_not_reaped", CORE,
     'if s["status"] in ("running", "interrupted"):  # the previous runner died or was stopped mid-stage',
     'if s["status"] == "running":  # the previous runner died or was stopped mid-stage',
     (FIND, "InterruptedStageIsReaped"), "what an interrupted ordinary stage left behind is not killed before the rerun")
-mut("E3a_check_utf8_in_run", CORE, 'text=True, errors="replace")\n        ok =', 'text=True)\n        ok =',
+mut("E3a_check_utf8_in_run", CORE, 'text=True, errors="replace")\n        try:\n            outs', 'text=True)\n        try:\n            outs',
     (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes the runner")
 mut("E3b_check_utf8_in_resolve", CORE, 'text=True, errors="replace")\n            if chk.returncode != 0:',
     'text=True)\n            if chk.returncode != 0:', (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes resolve --done")
@@ -206,14 +206,48 @@ mut("R3_en_makes_a_comparative_claim", "README.md", "Not compared with any other
     "Faster than any other tool.", (README_T, "comparative"), "the English section claims to beat other tools")
 mut("R4_language_bar_loses_de", "README.md", "[Deutsch](#deutsch)", "Deutsch", (README_T, "navigation"),
     "the language bar no longer links to the German section")
-mut("R5_en_names_another_version", "README.md", "Version 1.0.0, one author", "Version 1.0.1, one author",
+mut("R5_en_names_another_version", "README.md", "Version 1.1.0, one author", "Version 1.1.1, one author",
     (README_T, "required_facts"), "the English section names a version the code does not have")
+mut("R9_header_names_another_version", "README.md", "Version: **1.1.0** ·", "Version: **1.1.1** ·",
+    (README_T, "required_facts"), "the page header names a version the code does not have")
+mut("R10_zh_names_another_version", "README.md", "版本 1.1.0，单人开发", "版本 1.1.1，单人开发",
+    (README_T, "required_facts"), "the Chinese section names a version the code does not have")
 mut("R6_logo_reference_is_broken", "README.md", 'src="assets/logo.jpg"', 'src="assets/logo-missing.jpg"',
     (README_T, "logo"), "the header shows a logo file that does not exist")
 mut("R7_de_loses_a_subsection", "README.md", "### Grenzen", "Grenzen", (README_T, "navigation"),
     "the German section has one subsection fewer than the others")
 mut("R8_a_link_points_nowhere", "README.md", "[tests/](tests/)", "[tests/](tests-missing/)", (README_T, "relative_link"),
     "the file table links to a directory that does not exist")
+
+OUT_T = "test_outputs.py"
+mut("O1_skip_ignores_outputs", CORE, 'bad = drifted(s.get("sha256"), now)', 'bad = []', (OUT_T, "deleted_output"),
+    "a finished stage is skipped without looking at its declared outputs")
+mut("O2_outputs_not_in_the_fingerprint", CORE, '        doc["outputs"] = sp["outputs"]', '        pass',
+    (OUT_T, "voids_its_approval"), "the declared output names are not part of the stage identity")
+mut("O3_fingerprint_always_has_outputs", CORE, '    if sp.get("outputs"):  # only when declared', '    if True:  # only when declared',
+    (OUT_T, "version_1_0_0"), "a stage without outputs no longer has its 1.0.0 fingerprint")
+mut("O4_approval_stage_is_made_again", CORE, '                if sp.get("approval"):  # it acted once;', '                if False:  # it acted once;',
+    (OUT_T, "changed_output_makes_it_uncertain"), "an irreversible stage whose output changed is run again on its own")
+mut("O5_missing_output_is_done", CORE, 'ok = rc == 0 and chk.returncode == 0 and not missing', 'ok = rc == 0 and chk.returncode == 0',
+    (OUT_T, "did_not_produce"), "a stage that did not produce its declared output is done")
+mut("O6_no_record_is_trusted", CORE, 'return [x for x, h in now.items() if rec.get(x) != h]',
+    'return [x for x, h in now.items() if x in rec and rec[x] != h]', (OUT_T, "without_the_recorded_outputs"),
+    "a record with no stored output hashes is taken as unchanged")
+mut("O7_resolve_done_ignores_a_missing_output", CORE, '            if missing:\n                print("refused: declared output missing',
+    '            if False:\n                print("refused: declared output missing', (OUT_T, "resolve_done"),
+    "resolve --done marks a stage done although a declared output is missing")
+mut("O8_resolve_done_records_nothing", CORE, '            if outs:\n                s["sha256"] = outs  # this decision',
+    '            if False:\n                s["sha256"] = outs  # this decision', (OUT_T, "resolve_done"),
+    "resolve --done does not record the outputs it accepted")
+mut("O9_old_record_survives_a_new_run", CORE, '        s.pop("sha256", None)  # the old outputs are no longer', '        pass  # the old outputs are no longer',
+    (OUT_T, "no_record_of_its_old_outputs"), "a failed stage still shows the output hashes of an older run")
+mut("O10_unreadable_output_is_done", CORE, 'except SpecError:  # an output that cannot be read is no evidence: it counts as absent\n            outs = {x: "missing" for x in sp.get("outputs", [])}',
+    'except SpecError:  # an output that cannot be read is no evidence: it counts as absent\n            outs = {}',
+    (OUT_T, "cannot_be_read_after"), "an output that cannot be read after the run does not stop the stage from being done")
+mut("O11_deps_outputs_overlap_allowed", CORE, '        if both:', '        if False:', (OUT_T, "both_a_dep"),
+    "a path that is both a dep and an output of one stage is accepted")
+mut("O12_outputs_type_unchecked", CORE, """if not (isinstance(outs, list) and all(isinstance(x, str) and x for x in outs)):""", "if False:", (OUT_T, "list_of_paths"),
+    "'outputs' may be anything")
 
 _controls = {}
 

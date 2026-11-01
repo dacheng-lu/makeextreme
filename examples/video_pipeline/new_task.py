@@ -25,28 +25,29 @@ def stages(asr_python):
     return [
         {"id": "fetch", "run": "sh bin/fetch.sh",
          "check": "test -s src.mp4 && %s src.mp4 | awk '{exit !($1>1)}'" % DUR,
-         "deps": ["input.url", "bin/fetch.sh"]},
+         "deps": ["input.url", "bin/fetch.sh"], "outputs": ["src.mp4"]},
         {"id": "audio", "run": "sh bin/audio.sh",
          "check": "test -s audio.wav && awk -v a=\"$(%s src.mp4)\" -v b=\"$(%s audio.wav)\" "
                   "'BEGIN{d=a-b; exit !(d<1 && d>-1)}'" % (DUR, DUR),
-         "deps": ["src.mp4", "bin/audio.sh"]},
+         "deps": ["src.mp4", "bin/audio.sh"], "outputs": ["audio.wav"]},
         {"id": "asr", "run": "%s bin/asr.py audio.wav asr.txt" % asr_python,
          "check": "test \"$(grep -c '^\\[' asr.txt)\" -ge 1",
-         "deps": ["audio.wav", "bin/asr.py"]},
+         "deps": ["audio.wav", "bin/asr.py"], "outputs": ["asr.txt"]},
         {"id": "frames", "run": "sh bin/frames.sh",
          "check": "awk -v n=\"$(ls frames | wc -l)\" -v d=\"$(%s src.mp4)\" "
                   "'BEGIN{e=int(d/2); exit !(n>=e && n<=e+2)}'" % DUR,
-         "deps": ["src.mp4", "bin/frames.sh"]},
+         "deps": ["src.mp4", "bin/frames.sh"], "outputs": ["frames"]},
         {"id": "ocr", "run": "sh bin/ocr.sh",
          "check": "test \"$(ls ocr | wc -l)\" -eq \"$(ls frames | wc -l)\" && test \"$(ls ocr | wc -l)\" -ge 1",
-         "deps": ["frames", "bin/ocr.sh"]},
+         "deps": ["frames", "bin/ocr.sh"], "outputs": ["ocr"]},
         {"id": "assemble", "run": "%s bin/assemble.py" % asr_python,
          "check": "test \"$(grep -c '^## t=' brief.md)\" -eq \"$(ls frames | wc -l)\"",
-         "deps": ["asr.txt", "ocr", "input.label", "bin/assemble.py"]},
+         "deps": ["asr.txt", "ocr", "input.label", "bin/assemble.py"],
+         "outputs": ["brief.md"]},
         {"id": "deliver",
          "run": "mkdir -p deliver && cp brief.md deliver/brief.part && mv deliver/brief.part deliver/brief.md",
          "check": "cmp -s brief.md deliver/brief.md",
-         "deps": ["brief.md"], "approval": "required"},
+         "deps": ["brief.md"], "approval": "required", "outputs": ["deliver/brief.md"]},
     ]
 
 

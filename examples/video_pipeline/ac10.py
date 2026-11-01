@@ -88,6 +88,43 @@ def finish(d, results, name):
     results.append((name + ": run completes (exit 0)", r.returncode == 0, "exit %d %s" % (r.returncode, r.stderr[-120:])))
 
 
+def starts_of(d):
+    ev = journal(d)
+    return {s: sum(1 for e in ev if e["ev"] == "start" and e["stage"] == s) for s in STAGES}
+
+
+def outputs_after_done(U, D, results):
+    """A finished task whose outputs are deleted or edited afterwards: the damage is noticed (declared `outputs`),
+    only the damaged stage is made again, and the bytes come back as they were. D is a copy of the finished U."""
+    shutil.copytree(U, D, symlinks=True)
+    base = starts_of(D)
+    sha = {art: sha_path(os.path.join(U, art)) for art in ARTIFACTS}
+
+    shutil.rmtree(os.path.join(D, "ocr"))
+    r = mx("run", D)
+    got = {s: starts_of(D)[s] - base[s] for s in STAGES}
+    results.append(("D: ocr/ deleted after completion -> run exits 0", r.returncode == 0, "exit %d %s" % (r.returncode, r.stderr[-120:])))
+    results.append(("D: only ocr ran again", got == {s: int(s == "ocr") for s in STAGES}, json.dumps(got)))
+    results.append(("D: ocr/ is back, byte-identical to U's", sha_path(os.path.join(D, "ocr")) == sha["ocr"], ""))
+
+    with open(os.path.join(D, "asr.txt"), "a") as f:
+        f.write("[99.0-99.5] edited by hand\n")
+    before = starts_of(D)
+    r = mx("run", D)
+    got = {s: starts_of(D)[s] - before[s] for s in STAGES}
+    results.append(("D: asr.txt edited after completion -> run exits 0", r.returncode == 0, "exit %d" % r.returncode))
+    results.append(("D: only asr ran again, asr.txt is U's again", got == {s: int(s == "asr") for s in STAGES}
+                    and sha_path(os.path.join(D, "asr.txt")) == sha["asr.txt"], json.dumps(got)))
+
+    os.remove(os.path.join(D, "deliver", "brief.md"))
+    before = starts_of(D)
+    r = mx("run", D)
+    results.append(("D: the approved stage lost its output -> exit 5 (uncertain), not run again",
+                    r.returncode == 5 and starts_of(D) == before, "exit %d" % r.returncode))
+    results.append(("D: resolve --retry, then run restores it", mx("resolve", D, "deliver", "--retry").returncode == 0
+                    and mx("run", D).returncode == 0 and sha_path(os.path.join(D, "deliver/brief.md")) == sha["deliver/brief.md"], ""))
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", required=True)
@@ -145,6 +182,8 @@ def main(argv):
     for art in ARTIFACTS:
         hu, hk = sha_path(os.path.join(U, art)), sha_path(os.path.join(K, art))
         results.append(("artifact %s: K equals U" % art, hu == hk and hu != "missing", "%s %s" % (hu[:12], hk[:12])))
+
+    outputs_after_done(U, os.path.join(a.work, "D"), results)
 
     width = max(len(r[0]) for r in results)
     for name, ok, note in results:
