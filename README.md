@@ -69,6 +69,7 @@ The package is not installed; run it from the repository root. A larger task is 
 - `approve` cannot tell who typed it. It stops an accidental release, not an agent that holds your shell.
 - A stage that calls `setsid` and clears its environment cannot be found and killed after a crash; a child that ignores SIGTERM lives until the next `run`.
 - State (`task.json`) and journal (`journal.jsonl`) are two writes; after a crash between them the journal can be one entry behind. `task.json` is authoritative.
+- A finished stage is skipped on the next run without running its `check` again. If its output is deleted or edited afterwards, nothing notices unless a later stage lists that output in `deps` (measured on 1.0.0: delete the last stage's output and `run` exits 0 with a `skip` and no file). Listing a stage's own output in its own `deps` does not help, because the stored fingerprint is computed before the run.
 - Passing `check` proves what `check` measures. A check that is too weak makes a wrong result "done".
 - The design record, with every limit found by the audits, is `ARCHITECTURE.md` (in Chinese).
 
@@ -133,6 +134,7 @@ python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段�
 - `approve` 分辨不出是谁敲的。它能防止意外放行，防不住握着你 shell 的 agent。
 - 调用了 `setsid` 并清空环境变量的阶段，崩溃后找不到也杀不掉；忽略 SIGTERM 的子进程会活到下一次 `run`。
 - 状态（`task.json`）和日志（`journal.jsonl`）是两次写入；两次之间崩溃，日志可能少一条。以 `task.json` 为准。
+- 已完成的阶段下次运行时会被跳过，不会再跑一遍 `check`。事后产物被删或被改，除非后面某个阶段把它列进了 `deps`，否则没人会发现（在 1.0.0 上实测：删掉最后一个阶段的产物，`run` 退出码 0，日志写 `skip`，文件不在）。把阶段自己的产物列进它自己的 `deps` 也没用，因为存下的指纹是在运行*之前*算的。
 - `check` 通过只证明 `check` 测量的东西。太弱的检查会让错误的结果也算「完成」。
 - 设计记录和审计发现的全部限制见 `ARCHITECTURE.md`（中文）。
 
@@ -195,6 +197,7 @@ Das Paket wird nicht installiert; im Repository-Hauptverzeichnis ausführen. Ein
 - `approve` kann nicht erkennen, wer es getippt hat. Es verhindert eine versehentliche Freigabe, keinen Agenten, der deine Shell hält.
 - Eine Stufe, die `setsid` aufruft und ihre Umgebung leert, wird nach einem Absturz weder gefunden noch beendet; ein Kindprozess, der SIGTERM ignoriert, lebt bis zum nächsten `run`.
 - Zustand (`task.json`) und Journal (`journal.jsonl`) sind zwei Schreibvorgänge; nach einem Absturz dazwischen kann das Journal einen Eintrag zurückliegen. Maßgeblich ist `task.json`.
+- Eine fertige Stufe wird beim nächsten Lauf übersprungen, ohne dass ihr `check` erneut läuft. Wird ihr Ergebnis danach gelöscht oder geändert, merkt das niemand, solange nicht eine spätere Stufe es in `deps` führt (auf 1.0.0 gemessen: das Ergebnis der letzten Stufe löschen, `run` endet mit 0, das Journal schreibt `skip`, die Datei fehlt). Das eigene Ergebnis in den eigenen `deps` zu führen hilft nicht, weil der gespeicherte Fingerabdruck *vor* dem Lauf berechnet wird.
 - Ein bestandenes `check` beweist nur, was `check` misst. Eine zu schwache Prüfung lässt auch ein falsches Ergebnis „fertig“ sein.
 - Das Entwurfsprotokoll mit allen von den Audits gefundenen Grenzen ist `ARCHITECTURE.md` (auf Chinesisch).
 
