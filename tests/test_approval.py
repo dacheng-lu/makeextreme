@@ -121,6 +121,21 @@ class Uncertain(TaskCase):
         self.assertEqual(mx("run", d).returncode, 5)
         self.assertEqual(self.lines(d, "rs"), 1)
 
+    def test_resolve_refuses_a_stage_that_is_not_uncertain_and_changes_nothing(self):
+        d = self.task([MAKE, send()])
+        mx("run", d)
+        mx("approve", d, "send")
+        self.assertEqual(mx("run", d).returncode, 0)  # send is done
+        before = self.sha(d)
+        for mode in ("--retry", "--done"):
+            for sid in ("send", "nope"):
+                res = mx("resolve", d, sid, mode)
+                self.assertEqual(res.returncode, 1, (sid, mode, res.stderr))
+                self.assertIn("not uncertain", res.stderr)
+                self.assertNotIn("Traceback", res.stderr)
+        self.assertEqual(self.sha(d), before)
+        self.assertEqual(self.lines(d, "rs"), 1)
+
     def test_resolve_done_needs_a_passing_check(self):
         d = self.crashed()
         mx("run", d)
@@ -138,6 +153,51 @@ class Uncertain(TaskCase):
         self.assertEqual(mx("resolve", d, "send", "--retry").returncode, 0)
         self.assertEqual(mx("run", d).returncode, 0)
         self.assertEqual(self.lines(d, "rs"), 2)
+
+
+class FailedIrreversible(TaskCase):
+    """Found by a pre-audit probe: a FAILED approval stage was run again by the next plain `run`,
+    with no new decision, although it may have acted before it failed."""
+
+    def failing(self, **kw):
+        d = self.task([MAKE, send(**kw)])
+        self.assertEqual(mx("run", d).returncode, 4)
+        self.assertEqual(mx("approve", d, "send").returncode, 0)
+        return d
+
+    def check_never_repeated(self, d):
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 5, res.stderr)  # not 2: a person must look at it
+        st = self.state(d)
+        self.assertEqual((st["status"], st["stages"]["send"]["status"]), ("uncertain",) * 2)
+        self.assertEqual(self.lines(d, "rs"), 1)
+        reason = [e for e in self.journal(d) if e["ev"] == "uncertain"][-1]
+        self.assertIn("failed", reason.get("reason", ""))
+        for _ in range(2):  # plain runs keep refusing and never repeat the action
+            self.assertEqual(mx("run", d).returncode, 5)
+            self.assertEqual(self.lines(d, "rs"), 1)
+
+    def test_a_nonzero_exit_is_not_repeated_by_a_plain_run(self):
+        self.check_never_repeated(self.failing(run="echo sent >> rs; exit 1"))
+
+    def test_a_failing_check_after_exit_zero_is_not_repeated_by_a_plain_run(self):
+        self.check_never_repeated(self.failing(run="echo sent >> rs", check="false"))
+
+    def test_resolve_retry_repeats_it_by_explicit_decision_only(self):
+        d = self.failing(run="echo sent >> rs; test -f go", check="test -f go")
+        self.assertEqual(mx("run", d).returncode, 5)
+        self.write(d, "go", "")
+        self.assertEqual(mx("resolve", d, "send", "--retry").returncode, 0)
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "rs"), 2)
+
+    def test_an_ordinary_stage_that_fails_still_stops_with_exit_2_and_is_retried_by_run(self):
+        d = self.task([{"id": "a", "run": "echo try >> c; test -f go", "check": "true"}])
+        self.assertEqual(mx("run", d).returncode, 2)
+        self.assertEqual(self.state(d)["stages"]["a"]["status"], "failed")
+        self.write(d, "go", "")
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "c"), 2)
 
 
 class OrphanGap(TaskCase):

@@ -1,10 +1,11 @@
 """makeextreme core: crash-safe stage runner. Standard library only, Linux (uses /proc).
 
 Exit codes of `run`: 0 complete, 2 a stage failed, 3 locked by a live runner, 4 waiting for
-approval, 5 a crashed irreversible stage needs `resolve`, 6 completion refused (secret-shaped
-value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json.
+approval, 5 an irreversible stage crashed or failed and needs `resolve`, 6 completion refused
+(secret-shaped value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json or an
+unreadable task.json.
 """
-import getpass, hashlib, json, os, signal, subprocess, sys, tempfile, time
+import fcntl, getpass, hashlib, json, os, signal, subprocess, sys, tempfile, time
 
 from . import secret_scan
 
@@ -97,11 +98,18 @@ class Task:
         self.d = d
         with open(os.path.join(d, "stages.json")) as f:
             self.spec = json.load(f)
-        validate_spec(self.spec)
+        try:
+            validate_spec(self.spec)
+        except SpecError as e:
+            raise SpecError(f"invalid stages.json: {e}")
         self.sp = os.path.join(d, "task.json")
         if os.path.exists(self.sp):
-            with open(self.sp) as f:
-                self.state = json.load(f)
+            try:
+                with open(self.sp) as f:
+                    self.state = json.load(f)
+            except ValueError as e:
+                raise SpecError(f"task.json is unreadable ({e}); restore it from a copy, or delete it "
+                                "to start the task over")
         else:
             self.state = {"status": "new", "stages": {}}
 
@@ -126,25 +134,25 @@ class Task:
 
 
 def acquire(d):
-    p = os.path.join(d, "lock")
-    me = json.dumps({"pid": os.getpid(), "start": starttime(os.getpid())}).encode()
-    for _ in range(2):
+    """Take the run lock: an exclusive flock on <task>/lock, held by the open descriptor until
+    this runner ends (the kernel drops it on any death, so there is no stale lock to judge and no
+    pid reuse to guard against). The file is never deleted: unlinking a flock file lets a second
+    runner lock the old inode while a third creates a new one. Its content is only a note for
+    the refusal message. Returns the descriptor; keep it open."""
+    fd = os.open(os.path.join(d, "lock"), os.O_CREAT | os.O_RDWR, 0o644)  # not inheritable
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
         try:
-            fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, me)
-            os.close(fd)
-            return p
-        except FileExistsError:
-            try:
-                with open(p) as f:
-                    h = json.load(f)
-            except (OSError, ValueError):
-                h = {}
-            if h.get("pid") and starttime(h["pid"]) == h.get("start"):
-                print(f"locked by live pid {h['pid']}", file=sys.stderr)
-                sys.exit(EX_LOCKED)
-            os.unlink(p)  # holder is dead: stale lock
-    sys.exit(EX_LOCKED)
+            holder = json.loads(os.pread(fd, 200, 0) or b"{}").get("pid")
+        except ValueError:
+            holder = None
+        os.close(fd)
+        print(f"locked by a live runner" + (f" (pid {holder})" if holder else ""), file=sys.stderr)
+        sys.exit(EX_LOCKED)
+    os.ftruncate(fd, 0)
+    os.pwrite(fd, json.dumps({"pid": os.getpid(), "start": starttime(os.getpid())}).encode(), 0)
+    return fd
 
 
 def reap(s):
@@ -273,6 +281,10 @@ def _run(t, d):
             s.pop(k, None)
         t.save()
         t.log("end", stage=sid, ok=ok, rc=rc, check_rc=chk.returncode)
+        if not ok and sp.get("approval"):
+            # it may have acted before it failed (or acted and left no evidence): not ours to repeat
+            return t.halt("uncertain", sid, EX_UNCERTAIN, "uncertain",
+                          reason=f"failed: rc={rc} check_rc={chk.returncode}")
         if not ok:
             t.state["status"] = "failed"
             t.save()
@@ -297,12 +309,11 @@ def _locked(d, fn):
         try:
             t = Task(d)
         except SpecError as e:
-            print(f"invalid stages.json: {e}", file=sys.stderr)
+            print(f"refused: {e}", file=sys.stderr)
             return EX_SPEC
         return fn(t)
     finally:
-        if os.path.exists(lock):
-            os.unlink(lock)
+        os.close(lock)
 
 
 def run(d):
@@ -315,7 +326,7 @@ def approve(d, sid):
     try:
         t = Task(d)
     except SpecError as e:
-        print(f"invalid stages.json: {e}", file=sys.stderr)
+        print(f"refused: {e}", file=sys.stderr)
         return EX_SPEC
     sp = next((x for x in t.spec if x["id"] == sid), None)
     if sp is None or not sp.get("approval"):

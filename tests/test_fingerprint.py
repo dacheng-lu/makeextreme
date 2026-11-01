@@ -50,7 +50,14 @@ class Fingerprint(TaskCase):
         self.assertEqual(mx("run", self.d).returncode, 0)
         self.assertEqual(self.runs(self.d), (1, 1, 2))
 
-    def test_a_directory_dep_is_hashed_by_content(self):
+    def test_a_changed_check_invalidates_the_stage(self):
+        spec = pipeline()
+        spec[2]["check"] = "test -s c.out && true"  # same command, same deps, a different check
+        self.write(self.d, "stages.json", json.dumps(spec))
+        self.assertEqual(mx("run", self.d).returncode, 0)
+        self.assertEqual(self.runs(self.d), (1, 1, 2))
+
+    def test_a_directory_dep_is_hashed_by_content_and_not_by_file_names(self):
         d = self.task([{"id": "z", "run": "echo z >> rz; ls frames > z.out", "check": "test -f z.out",
                         "deps": ["frames"]}])
         os.mkdir(os.path.join(d, "frames"))
@@ -61,6 +68,15 @@ class Fingerprint(TaskCase):
         self.write(d, "frames/f2", "2")
         self.assertEqual(mx("run", d).returncode, 0)
         self.assertEqual(self.lines(d, "rz"), 2)
+        self.write(d, "frames/f1", "changed")  # same names, other content, also one level down
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "rz"), 3)
+        self.write(d, "frames/sub/f3", "3")
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "rz"), 4)
+        self.write(d, "frames/sub/f3", "3 changed")
+        self.assertEqual(mx("run", d).returncode, 0)
+        self.assertEqual(self.lines(d, "rz"), 5)
 
 
 if __name__ == "__main__":

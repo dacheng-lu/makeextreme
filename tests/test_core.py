@@ -56,17 +56,47 @@ class Core(TaskCase):
         self.assertEqual((self.lines(d, "c"), self.lines(d, "d")), (2, 1))
 
     def test_ac4_live_lock_refuses_dead_lock_is_taken_over(self):
-        d = self.task([{"id": "s", "run": "echo ok >> c", "check": "test -s c"}])
-        with open(f"/proc/{os.getpid()}/stat") as f:
-            start = f.read().rsplit(")", 1)[1].split()[19]
-        self.write(d, "lock", json.dumps({"pid": os.getpid(), "start": start}))
+        d = self.task([{"id": "s", "run": "echo ok >> c; sleep 2", "check": "test -s c"}])
+        live = mx_start("run", d)  # a real runner holds the lock while its stage sleeps
+        self.addCleanup(live.wait)
+        self.assertTrue(wait_for(os.path.join(d, "c")))
         res = mx("run", d)
-        self.assertEqual((res.returncode, self.lines(d, "c")), (3, 0))
-        dead = subprocess.Popen(["true"])
-        dead.wait()
-        self.write(d, "lock", json.dumps({"pid": dead.pid, "start": "1"}))
+        self.assertEqual((res.returncode, self.lines(d, "c")), (3, 1), res.stderr)
+        self.assertIn("locked", res.stderr)
+        # a holder that dies (kill -9) leaves its lock file behind; the next runner just takes over
+        os.kill(live.pid, signal.SIGKILL)
+        live.wait()
+        self.assertTrue(os.path.exists(os.path.join(d, "lock")))
         res = mx("run", d)
-        self.assertEqual((res.returncode, self.lines(d, "c")), (0, 1))
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(self.state(d)["status"], "complete")
+
+
+    def test_stage_ids_must_be_present_and_unique_and_nothing_runs_otherwise(self):
+        ok = {"id": "a", "run": "echo a >> c", "check": "true"}
+        bad = {"duplicate id": [ok, {**ok, "run": "echo again >> c"}], "missing id": [{"run": "echo x >> c", "check": "true"}],
+               "empty id": [{**ok, "id": ""}], "no check": [{"id": "a", "run": "echo x >> c"}],
+               "empty list": [], "not a list": {"id": "a"}}
+        for label, spec in bad.items():
+            d = self.task(spec)
+            res = mx("run", d)
+            self.assertEqual(res.returncode, 64, (label, res.stderr))
+            self.assertIn("invalid stages.json", res.stderr, label)
+            self.assertNotIn("Traceback", res.stderr, label)
+            self.assertEqual(self.lines(d, "c"), 0, label)
+
+    def test_a_damaged_task_json_is_refused_cleanly_and_left_alone(self):
+        for damaged in ("", '{"status": "runn'):
+            d = self.task([{"id": "s", "run": "echo ok >> c", "check": "test -s c"}])
+            self.write(d, "task.json", damaged)
+            res = mx("run", d)
+            self.assertEqual(res.returncode, 64, res.stderr)
+            self.assertNotIn("Traceback", res.stderr)
+            self.assertIn("task.json", res.stderr)
+            self.assertEqual(self.read(d, "task.json"), damaged)
+            self.assertEqual(self.lines(d, "c"), 0)
+            os.unlink(os.path.join(d, "task.json"))  # the message's own advice: delete it to start over
+            self.assertEqual(mx("run", d).returncode, 0)  # and the lock was released
 
 
 if __name__ == "__main__":
