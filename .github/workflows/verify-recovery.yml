@@ -1,0 +1,33 @@
+name: Verify recovery
+
+on:
+  push:
+    branches: [fix/refuse-mismatched-proc]
+  pull_request:
+    paths:
+      - 'makeextreme/**'
+      - 'tests/**'
+      - 'README.md'
+      - '.github/workflows/verify-recovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.14']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Verify proc PID namespace
+        run: python -c "import os; assert os.readlink('/proc/self') == str(os.getpid())"
+      - name: Run test suite
+        run: python -m unittest discover -s tests -p 'test_*.py'
