@@ -87,6 +87,16 @@ class ReadmeFacts(unittest.TestCase):
         for token in PAGE_FACTS:
             self.assertIn(token, page(), "the page lacks %r" % token)
 
+    def test_every_language_says_that_this_release_refuses_a_task_the_previous_one_accepted(self):
+        """The owner chose 1.2.0 over 1.1.1 (2026-11-02) because two stages declaring the same output ran under 1.1.0 and exit 64 now:
+        a patch number must not hide a tightening, and the page must say so in every language."""
+        have = sections()
+        says = {"English": ("since 1.2.0", "1.1.0 accepted such a task"), "简体中文": ("自 1.2.0 起", "1.1.0 接受这样的任务"),
+                "Deutsch": ("seit 1.2.0", "1.1.0 akzeptierte eine solche Aufgabe")}
+        for name, tokens in says.items():
+            for token in tokens:
+                self.assertIn(token, have[name], "the %s section does not say %r" % (name, token))
+
     def test_every_exit_code_of_the_runner_is_listed_in_every_language(self):
         codes = {0, core.EX_FAILED, core.EX_LOCKED, core.EX_AWAITING, core.EX_UNCERTAIN, core.EX_SECRET, core.EX_SPEC}
         have = sections()

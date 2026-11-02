@@ -221,11 +221,11 @@ mut("R3_en_makes_a_comparative_claim", "README.md", "Not compared with any other
     "Faster than any other tool.", (README_T, "comparative"), "the English section claims to beat other tools")
 mut("R4_language_bar_loses_de", "README.md", "[Deutsch](#deutsch)", "Deutsch", (README_T, "navigation"),
     "the language bar no longer links to the German section")
-mut("R5_en_names_another_version", "README.md", "Version 1.1.1, one author", "Version 1.1.2, one author",
+mut("R5_en_names_another_version", "README.md", "Version 1.2.0, one author", "Version 1.2.1, one author",
     (README_T, "required_facts"), "the English section names a version the code does not have")
-mut("R9_header_names_another_version", "README.md", "Version: **1.1.1** ·", "Version: **1.1.2** ·",
+mut("R9_header_names_another_version", "README.md", "Version: **1.2.0** ·", "Version: **1.2.1** ·",
     (README_T, "required_facts"), "the page header names a version the code does not have")
-mut("R10_zh_names_another_version", "README.md", "版本 1.1.1，单人开发", "版本 1.1.2，单人开发",
+mut("R10_zh_names_another_version", "README.md", "版本 1.2.0，单人开发", "版本 1.2.1，单人开发",
     (README_T, "required_facts"), "the Chinese section names a version the code does not have")
 mut("R11_exit_64_loses_task_json", "README.md",
     "`64` refused cleanly, nothing runs: an invalid or missing `stages.json` or task directory, a damaged `task.json`, or a declared output that cannot be read.",
@@ -377,7 +377,16 @@ mut("S5_tests_matched_without_word_boundary", SLC, 'r"\\b%s\\b" % re.escape(n)',
 mut("S6_max_chars_ignored", SLC, "if max_chars is not None and sum", "if False and sum", (SLICE_T, "max_chars"), "the pack ignores its size cap")
 
 RM_T = "test_roadmap.py"
-mut("RM1_roadmap_lacks_the_current_version", "ROADMAP.md", "- **1.1.1** (2026-11-01):", "- **1.0.9** (2026-11-01):",
+mut("R15_en_hides_the_tightening", "README.md", "1.1.0 accepted such a task, so 1.2.0 tightens what a task may declare, see ROADMAP.md)", "see ROADMAP.md)",
+    (README_T, "refuses_a_task_the_previous"), "the English section no longer says that 1.1.0 accepted such a task")
+mut("R16_zh_hides_the_tightening", "README.md", "1.1.0 接受这样的任务，所以 1.2.0 收紧了任务可以声明的内容，见 ROADMAP.md）", "见 ROADMAP.md）",
+    (README_T, "refuses_a_task_the_previous"), "the Chinese section no longer says that 1.1.0 accepted such a task")
+mut("R17_de_hides_the_tightening", "README.md", "1.1.0 akzeptierte eine solche Aufgabe, 1.2.0 schränkt also ein, was eine Aufgabe angeben darf, siehe ROADMAP.md)", "siehe ROADMAP.md)",
+    (README_T, "refuses_a_task_the_previous"), "the German section no longer says that 1.1.0 accepted such a task")
+mut("RM2_roadmap_calls_a_tightening_a_patch", "ROADMAP.md", "a release that tightens what a task may declare, which is why it is a minor and not a patch version: two stages that declare the same output, or an output inside another stage's output, were accepted by 1.1.0",
+    "a release: two stages that declare the same output, or an output inside another stage's output, used to work", (RM_T, "not_called_a_patch"),
+    "the roadmap entry no longer says that the release refuses what the previous one accepted")
+mut("RM1_roadmap_lacks_the_current_version", "ROADMAP.md", "- **1.2.0** (2026-11-02):", "- **1.0.9** (2026-11-02):",
     (RM_T, "current_version"), "the roadmap does not list the version the code has as released")
 mut("RM2_roadmap_link_is_broken", "ROADMAP.md", "[NOTICE.md](NOTICE.md)", "[NOTICE.md](NOTICE-missing.md)",
     (RM_T, "relative_link"), "the roadmap links to a file that does not exist")
@@ -385,7 +394,7 @@ mut("RM3_readme_drops_the_roadmap_link", "README.md", "| [ROADMAP.md](ROADMAP.md
     (RM_T, "readme_links"), "the README no longer links to the roadmap")
 mut("RM4_roadmap_loses_a_section", "ROADMAP.md", "## Owed", "## Pending", (RM_T, "sections"),
     "the roadmap has no section for what is still owed")
-mut("RM5_roadmap_lists_an_unreleased_version", "ROADMAP.md", "- **1.0.0** (2026-11-01):", "- **1.2.0** (2026-11-01):",
+mut("RM5_roadmap_lists_an_unreleased_version", "ROADMAP.md", "- **1.0.0** (2026-11-01):", "- **1.3.0** (2026-11-01):",
     (RM_T, "nothing_after"), "the roadmap lists a released version the code does not have")
 
 _controls = {}

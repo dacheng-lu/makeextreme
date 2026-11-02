@@ -35,6 +35,12 @@ class Roadmap(unittest.TestCase):
         self.assertRegex(section("Released"), r"(?m)^- \*\*%s\*\* " % re.escape(__version__),
                          "the roadmap does not list %s under Released" % __version__)
 
+    def test_a_release_that_refuses_what_the_previous_one_accepted_is_not_called_a_patch(self):
+        entry = next(l for l in section("Released").splitlines() if l.startswith("- **%s**" % __version__))
+        self.assertRegex(entry, r"(?i)tighten")
+        self.assertRegex(entry, r"accepted by 1\.1\.0")
+        self.assertNotRegex(__version__, r"^\d+\.\d+\.[1-9]")
+
     def test_nothing_after_the_current_version_is_listed_as_released(self):
         listed = re.findall(r"(?m)^- \*\*(\d+\.\d+\.\d+)\*\*", section("Released"))
         newest = max(listed, key=lambda v: tuple(map(int, v.split("."))))
