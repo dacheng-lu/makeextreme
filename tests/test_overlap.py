@@ -42,6 +42,22 @@ class Refused(TaskCase):
             for key in ("outputs", "deps"):
                 self.refused([stage("s", **{key: [path]})], needle="record", label=(key, path))
 
+    def test_the_filesystem_root_is_a_parent_of_the_task_directory_too(self):
+        """Found by the audit of 1.1.1: containment was `a.startswith(b + os.sep)`, so b == "/" became "//" and nothing was ever inside it."""
+        for path in ("/", "/./", "../" * 40, "../" * 40 + "."):
+            for key in ("outputs", "deps"):
+                self.refused([stage("s", **{key: [path]})], needle="record", label=(key, path))
+
+    def test_a_path_that_lies_inside_a_record_file_is_refused_too(self):
+        """The record loop only asked whether a record is inside the declared path; `task.json/x` has the record as a prefix, loads, and can never settle."""
+        for path in ("task.json/x", "lock/y", "./journal.jsonl/a/b"):
+            for key in ("outputs", "deps"):
+                self.refused([stage("s", **{key: [path]})], needle="record", label=(key, path))
+
+    def test_a_path_with_a_nul_byte_is_refused_cleanly_not_with_a_traceback(self):
+        for key in ("outputs", "deps"):
+            self.refused([stage("s", **{key: ["a\x00b"]})], needle="NUL", label=key)
+
     def test_the_same_record_spelled_differently_is_still_refused(self):
         self.refused([stage("s", outputs=["./task.json"])], needle="record", label="./task.json")
         self.refused([stage("s", outputs=["x/../task.json"])], needle="record", label="x/../task.json")
@@ -63,6 +79,13 @@ class Refused(TaskCase):
 
     def test_one_stage_may_not_list_the_same_output_twice(self):
         self.refused([stage("one", outputs=["o.txt", "o.txt"])], needle="overlapping outputs", label="twice")
+
+    def test_a_duplicate_inside_one_stage_is_reported_as_one_stage_not_as_two(self):
+        d = self.task([stage("s", outputs=["o.txt", "./o.txt"])])
+        res = mx("run", d)
+        self.assertEqual(res.returncode, 64, res.stderr)
+        self.assertIn("stage s ", res.stderr)
+        self.assertNotIn("stages s and s", res.stderr)
 
     def test_a_stage_whose_dep_directory_contains_its_own_output_changes_its_own_dep(self):
         self.refused([stage("s", deps=["frames"], outputs=["frames/x.png"])], needle="overlap", label="dep contains output")

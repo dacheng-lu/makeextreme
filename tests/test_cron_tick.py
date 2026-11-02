@@ -126,6 +126,34 @@ class CronTickEntryPoints(TaskCase):
         self.assertEqual(run.returncode, 0, (advice, run.stdout, run.stderr))
         self.assertTrue(os.path.exists(os.path.join(d, "approvals.jsonl")), "the printed advice did not approve the stage")
 
+    def test_the_advice_can_be_pasted_when_the_interpreter_path_contains_a_space(self):
+        """Found by the audit of 1.1.1: the task path was quoted, the interpreter was not (a virtualenv under a path with a space)."""
+        parent = tempfile.TemporaryDirectory(prefix="adv-")
+        self.addCleanup(parent.cleanup)
+        wrapper_dir = os.path.join(parent.name, "my py")
+        os.makedirs(wrapper_dir)
+        wrapper = os.path.join(wrapper_dir, "python3")
+        with open(wrapper, "w") as f:
+            f.write('#!/bin/sh\nexec "%s" "$@"\n' % sys.executable)
+        os.chmod(wrapper, 0o755)
+        d = self.task([{"id": "send", "run": "echo pay >> pay.out", "check": "test -s pay.out", "deps": ["art"], "approval": "required"}], {"art": "A\n"})
+        res = subprocess.run(["sh", TICK, d], capture_output=True, text=True, env=dict(os.environ, PYTHON=wrapper))
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        advice = res.stdout.strip().split("waiting for approval: ", 1)[1].replace("<stage>", "send")
+        run = subprocess.run(["sh", "-c", advice], capture_output=True, text=True, cwd=tempfile.gettempdir())
+        self.assertEqual(run.returncode, 0, (advice, run.stdout, run.stderr))
+        self.assertTrue(os.path.exists(os.path.join(d, "approvals.jsonl")), "the printed advice did not approve the stage")
+
+    def test_a_relative_task_directory_whose_name_starts_with_a_dash_is_found(self):
+        parent = tempfile.TemporaryDirectory(prefix="dash-")
+        self.addCleanup(parent.cleanup)
+        d = os.path.join(parent.name, "-t")
+        os.makedirs(d)
+        with open(os.path.join(d, "stages.json"), "w") as f:
+            json.dump([self.STAGE], f)
+        res = subprocess.run(["sh", TICK, "-t"], capture_output=True, text=True, cwd=parent.name, env=dict(os.environ, PYTHON=sys.executable))
+        self.assertEqual((res.returncode, res.stdout.strip()), (0, "makeextreme: complete"), res.stdout + res.stderr)
+
     def test_the_advice_for_an_uncertain_stage_names_the_repository_and_quotes_the_task(self):
         d = self.task([{"id": "send", "run": "echo pay >> pay.out; exit 1", "check": "true", "deps": ["art"], "approval": "required"}], {"art": "A\n"})
         env = dict(os.environ, PYTHON=sys.executable)

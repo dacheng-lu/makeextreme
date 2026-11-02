@@ -149,8 +149,15 @@ RECORD_FILES = ("task.json", "journal.jsonl", "approvals.jsonl", "lock")  # the 
 
 
 def _inside(a, b):
-    """True when path `a` is `b` or lies inside it (both already real paths)."""
-    return a == b or a.startswith(b + os.sep)
+    """True when path `a` is `b` or lies inside it (both already real paths). The filesystem root has no extra separator to add."""
+    return a == b or a.startswith(b if b.endswith(os.sep) else b + os.sep)
+
+
+def _real(root, x):
+    """The real path of a declared path, or a clean refusal for one that cannot be a path at all."""
+    if "\0" in x:
+        raise SpecError(f"{x!r}: a NUL byte cannot be part of a path")
+    return os.path.realpath(os.path.join(root, x))
 
 
 def _check_paths(spec, d):
@@ -163,22 +170,23 @@ def _check_paths(spec, d):
         sid, deps, own = sp["id"], sp.get("deps", []), sp.get("outputs", [])
         for kind, paths in (("deps", deps), ("outputs", own)):
             for x in paths:
-                rec = next((r for r in records if _inside(r, os.path.realpath(os.path.join(root, x)))), None)
-                if rec:  # the path is a record file or a directory that contains one (".", "..", the task directory)
-                    raise SpecError(f"stage {sid}: {kind} {x!r} is or contains the runner's own record {os.path.basename(rec)}: "
+                p = _real(root, x)
+                rec = next((r for r in records if _inside(r, p) or _inside(p, r)), None)
+                if rec:  # a record file, a directory that contains one (".", "..", "/"), or a path inside one ("task.json/x")
+                    raise SpecError(f"stage {sid}: {kind} {x!r} is, contains or lies inside the runner's own record {os.path.basename(rec)}: "
                                     "it changes with every save, so the stage could never be skipped")
         for x in deps:
             for y in own:
-                a, b = os.path.realpath(os.path.join(root, x)), os.path.realpath(os.path.join(root, y))
+                a, b = _real(root, x), _real(root, y)
                 if _inside(a, b) or _inside(b, a):
                     raise SpecError(f"stage {sid}: 'deps' and 'outputs' overlap ({x!r}, {y!r}): a stage that changes one of "
                                     "its own deps has a new fingerprint after every run")
-        outs += [(sid, y, os.path.realpath(os.path.join(root, y))) for y in own]
+        outs += [(sid, y, _real(root, y)) for y in own]
     for i, (s1, x1, r1) in enumerate(outs):
         for s2, x2, r2 in outs[i + 1:]:
             if _inside(r1, r2) or _inside(r2, r1):
-                raise SpecError(f"stages {s1} and {s2} declare overlapping outputs ({x1!r}, {x2!r}): "
-                                "each run of one changes what the other recorded")
+                who = f"stage {s1} declares" if s1 == s2 else f"stages {s1} and {s2} declare"
+                raise SpecError(f"{who} overlapping outputs ({x1!r}, {x2!r}): each run of one changes what the other recorded")
 
 
 def validate_spec(spec, d=None):

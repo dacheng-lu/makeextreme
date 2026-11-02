@@ -90,7 +90,7 @@ class DeclaredOutputs(TaskCase):
         self.assertEqual(self.lines(d, "rf"), 2)
         self.assertEqual(sorted(os.listdir(os.path.join(d, "frames"))), ["a", "b"])
         # deleting a file also changes the list of names; the content is what counts when the names stay the same
-        self.write(d, "frames/a", "tampered\n")
+        self.write(d, "frames/a", "9\n")  # SAME size and names as the original "1\n": only the content differs
         self.assertEqual(sorted(os.listdir(os.path.join(d, "frames"))), ["a", "b"])
         self.assertEqual(mx("run", d).returncode, 0)
         self.assertEqual(self.lines(d, "rf"), 3, "an edited file inside a declared directory output was not noticed")

@@ -16,7 +16,7 @@ scope -> tier0 -> cheap -> findings -> replay -> final_prompt -> final_audit (ap
 | `final_prompt` | builds the final prompt from the goal, the criteria, the changed paths, the measured numbers and the checked findings, and checks that none of the cheap model's text outside the findings got in | no |
 | `final_audit` | the expensive model. `approval: required`, with `final_prompt.md` in `deps`: change the prompt and the approval is void. | expensive |
 
-Why a runner and not a script: a crash or a second cron tick skips every finished stage, so it costs no model call; the expensive call is one execution per approval; a failed `final_audit` is `uncertain` (the call may have been paid for) and a plain `run` does not repeat it.
+Why a runner and not a script: a crash or a second cron tick skips every stage that had *finished*, so those cost no model call; a model call that was still in flight when the runner died is made again by the next run, and the runner does not stop a model command it had started; the expensive call is one execution per approval; a failed `final_audit` is `uncertain` (the call may have been paid for) and a plain `run` does not repeat it.
 
 ## Use
 
@@ -35,4 +35,4 @@ The two model commands are plain shell. They read the prompt from `$AUDIT_PROMPT
 
 ## What is and is not verified
 
-`tests/test_audit_ladder.py` (19 tests) and `tests/test_slice_diff.py` (12) run the ladder against a throw-away repository with stand-in models that only count their calls and print a canned report. Mutants `L1`-`L14` and `S1`-`S6` in `tests/mutants.py` cover the properties above. **It has not been run with a real model yet.** The pack matches callers by name, which is noisy for common names, and no static analyzer is used. Measured on this repository's real diffs the pack is 62% and 88% of the changed Python files for two ranges (5% for a two-function change): the saving here is modest because the diffs are wide, not deep.
+`tests/test_audit_ladder.py` (27 tests) and `tests/test_slice_diff.py` (13) run the ladder against a throw-away repository with stand-in models that only count their calls and print a canned report. Mutants `L1`-`L20` and `S1`-`S7` in `tests/mutants.py` cover the properties above. **It has not been run with a real model yet.** The pack matches callers by name, which is noisy for common names, and no static analyzer is used. Measured on this repository's real diffs the pack is 62% and 88% of the changed Python files for two ranges (5% for a two-function change): the saving here is modest because the diffs are wide, not deep.

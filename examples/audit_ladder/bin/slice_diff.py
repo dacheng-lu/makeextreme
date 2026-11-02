@@ -91,8 +91,14 @@ def units_for(repo, base, head, path, status):
     for name, a, b in sorted(picked.values(), key=lambda t: t[1]):
         res.append({"file": path, "name": name, "start": a, "end": b, "source": "\n".join(lines[a - 1:b])})
     if module_lines and status != "added":
-        a, b = min(module_lines), max(module_lines)
-        res.append({"file": path, "name": "<module>", "start": a, "end": b, "source": "\n".join(lines[a - 1:b])})
+        runs = []  # one unit per run of consecutive changed lines: an import at the top and a constant at the bottom are two units
+        for ln in sorted(set(module_lines)):
+            if runs and ln == runs[-1][1] + 1:
+                runs[-1][1] = ln
+            else:
+                runs.append([ln, ln])
+        for a, b in runs:
+            res.append({"file": path, "name": "<module>", "start": a, "end": b, "source": "\n".join(lines[a - 1:b])})
     return res
 
 

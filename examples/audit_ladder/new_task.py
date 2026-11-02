@@ -3,7 +3,7 @@
 
     python new_task.py <task_dir> --repo <git repo> --base <rev> --suite "<test command>" --goal "<what the change is for>" \\
         --criterion "<acceptance criterion>" [--criterion ...] --cheap-cmd "<shell>" --final-cmd "<shell>" [--head REV]
-        [--pack-max-chars N] [--final-max-chars N]
+        [--pack-max-chars N] [--final-max-chars N] [--count-optional]
 
 Writes bin/ (the stage commands), audit.json, brief.json, cheap_cmd.sh, final_cmd.sh, an empty replays.json and stages.json. Then:
 
@@ -56,6 +56,7 @@ def main(argv):
     ap.add_argument("--final-cmd", required=True)
     ap.add_argument("--pack-max-chars", type=int, default=60000)
     ap.add_argument("--final-max-chars", type=int, default=12000)
+    ap.add_argument("--count-optional", action="store_true", help="accept a green suite whose output has no test count")
     ap.add_argument("--python", default=sys.executable)
     a = ap.parse_args(argv)
     d = os.path.abspath(a.task_dir)
@@ -68,7 +69,7 @@ def main(argv):
             f.write(text)
 
     write("audit.json", json.dumps({"repo": os.path.abspath(a.repo), "base": a.base, "head": a.head, "suite_cmd": a.suite,
-                                    "pack_max_chars": a.pack_max_chars}, indent=1) + "\n")
+                                    "pack_max_chars": a.pack_max_chars, "count_optional": a.count_optional}, indent=1) + "\n")
     write("brief.json", json.dumps({"goal": a.goal, "criteria": a.criterion or ["the suite passes"], "final_max_chars": a.final_max_chars,
                                     "block_on": ["BLOCKER", "MAJOR"]}, indent=1) + "\n")
     write("cheap_cmd.sh", a.cheap_cmd + "\n")

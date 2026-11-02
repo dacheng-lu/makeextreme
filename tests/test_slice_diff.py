@@ -74,6 +74,17 @@ class Units(SliceCase):
         base = self.two_commits(before, before.replace("'OLD'", "'NEW'"))
         self.assertEqual([u["name"] for u in self.pack(base)["units"]], ["outer.inner"])
 
+    def test_two_module_level_edits_far_apart_do_not_pull_in_everything_between_them(self):
+        """Found by the audit of 1.1.1: the <module> unit ran from the first changed module line to the last."""
+        middle = "".join(BIG % (i, i) for i in range(30))
+        before = "import os\n\n" + middle + "LIMIT = 1\n"
+        after = "import os, sys\n\n" + middle + "LIMIT = 2\n"
+        p = self.pack(self.two_commits(before, after))
+        units = [u for u in p["units"] if u["name"] == "<module>"]
+        self.assertEqual(len(units), 2, [(u["start"], u["end"]) for u in units])
+        self.assertNotIn("unrelated_15", "".join(u["source"] for u in units))
+        self.assertLess(sum(len(u["source"]) for u in units), len(before) // 4)
+
     def test_a_module_level_change_is_its_own_unit(self):
         before = "LIMIT = 1\n\n\ndef f():\n    return LIMIT\n"
         base = self.two_commits(before, before.replace("LIMIT = 1", "LIMIT = 2"))

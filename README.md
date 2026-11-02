@@ -60,12 +60,12 @@ The package is not installed; run it from the repository root. A larger task is 
 
 ### What was measured
 
-- 179 tests (`python -m unittest discover -s tests -p 'test_*.py'`) and 139 mutants (`python tests/mutants.py all`, about 3 minutes): every mutant makes at least one test fail.
+- 194 tests (`python -m unittest discover -s tests -p 'test_*.py'`) and 153 mutants (`python tests/mutants.py all`, about 3 minutes): every mutant makes at least one test fail.
 - **AC10, video pipeline** (`examples/video_pipeline/`): download, audio, transcript, frames, OCR, assembly and delivery as stages. On a 38-second video, `kill -9` of the runner during OCR (after 1, 4, 9 and 17 frames, and once with a real download from the URL) and a second `run` gave all 7 artifacts byte-identical to an uninterrupted run, no finished stage ran twice, and no orphan process stayed. Four deliberately broken runner variants make that check fail (`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`). On a copy of the finished task, deleting `ocr/`, editing `asr.txt` and deleting the approved stage's output each made the next `run` redo only the damaged stage (the approved stage stopped with exit 5 and was made again only after `resolve --retry`), with the original bytes back.
 - Whisper is not bit-deterministic on the machine used: the same clip gave two different transcripts in about 1 run out of 6 to 10. The example therefore caches a transcript by the hash of its audio, and AC10 shows that runs resume correctly, not that transcription is deterministic.
 - **AC9, Hermes host** (`examples/hermes_host/ac9.py`): a stage runs `hermes chat --oneshot` under `env -i`, the answer is captured and checked; a wrong model name fails the stage, and a stage without `env -i` fails the canary check.
 
-- **Audit ladder** (`examples/audit_ladder/`): an audit of a git range as stages, cheapest evidence first. The suite runs on a clean checkout of the committed head and a pack of only the changed functions is built (no model, and a red suite stops everything); a cheap model reads the pack; every finding needs a replay result you wrote; the expensive model gets only the goal, the criteria, the changed paths, the measured numbers and the checked findings, and its stage needs `approval`, bound to that prompt (change the prompt and the approval is void). A crash or a second tick costs no model call. Tested with stand-in models that only count their calls; not measured with a real model yet.
+- **Audit ladder** (`examples/audit_ladder/`): an audit of a git range as stages, cheapest evidence first. The suite runs on a clean checkout of the committed head and a pack of only the changed functions is built (no model, and a red suite stops everything); a cheap model reads the pack; every finding needs a replay result you wrote; the expensive model gets only the goal, the criteria, the changed paths, the measured numbers and the checked findings, and its stage needs `approval`, bound to that prompt (change the prompt and the approval is void). A crash or a second tick costs no model call for a stage that had finished; a call that was still in flight is made again. Tested with stand-in models that only count their calls; not measured with a real model yet.
 
 ### Boundaries
 
@@ -128,12 +128,12 @@ python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段�
 
 ### 实测了什么
 
-- 179 个测试（`python -m unittest discover -s tests -p 'test_*.py'`）和 139 个变异体（`python tests/mutants.py all`，约 3 分钟）：每个变异体都会让至少一个测试失败。
+- 194 个测试（`python -m unittest discover -s tests -p 'test_*.py'`）和 153 个变异体（`python tests/mutants.py all`，约 3 分钟）：每个变异体都会让至少一个测试失败。
 - **AC10，视频流水线**（`examples/video_pipeline/`）：下载、音频、转写、抽帧、OCR、拼装、交付各为一个阶段。在一段 38 秒的视频上，OCR 期间对运行器 `kill -9`（分别在第 1、4、9、17 帧之后，另有一次用真实 URL 下载），再运行一次后，7 个产物与不中断的一次逐字节相同，没有已完成的阶段被重跑，也没有残留的孤儿进程。四个故意弄坏的运行器变体会让这项检查失败（`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`）。在已完成任务的副本上，删掉 `ocr/`、改动 `asr.txt`、删掉已批准阶段的产物，下一次 `run` 都只重做被破坏的那个阶段（已批准的阶段以退出码 5 停下，`resolve --retry` 之后才重做），原来的字节都回来了。
 - 在所用机器上 Whisper 不是逐位确定的：同一段音频约每 6 到 10 次会出现一次不同的转写。因此示例按音频哈希缓存转写，AC10 证明的是「恢复正确」，不是「转写确定」。
 - **AC9，Hermes 宿主**（`examples/hermes_host/ac9.py`）：一个阶段在 `env -i` 下运行 `hermes chat --oneshot`，答案被捕获并检查；模型名写错会让阶段失败，没有 `env -i` 的阶段会过不了金丝雀检查。
 
-- **审计梯度**（`examples/audit_ladder/`）：把对一个 git 范围的审计写成阶段，先用最便宜的证据。测试套件在已提交 head 的干净检出上运行，并只打包改动过的函数（不调模型，套件为红就全部停下）；便宜的模型读这个包；每条发现都要有你写的重放结果；昂贵的模型只拿到目标、验收标准、改动路径、实测数字和已核对的发现，它的阶段需要 `approval`，批准绑定到这份提示（提示一变批准即作废）。崩溃或再来一个节拍都不会再调模型。用只计数调用的替身模型测过，还没用真实模型测过。
+- **审计梯度**（`examples/audit_ladder/`）：把对一个 git 范围的审计写成阶段，先用最便宜的证据。测试套件在已提交 head 的干净检出上运行，并只打包改动过的函数（不调模型，套件为红就全部停下）；便宜的模型读这个包；每条发现都要有你写的重放结果；昂贵的模型只拿到目标、验收标准、改动路径、实测数字和已核对的发现，它的阶段需要 `approval`，批准绑定到这份提示（提示一变批准即作废）。崩溃或再来一个节拍不会让已完成的阶段再调模型；崩溃时还在进行中的那次调用会重新调。用只计数调用的替身模型测过，还没用真实模型测过。
 
 ### 能力边界
 
@@ -194,12 +194,12 @@ Das Paket wird nicht installiert; im Repository-Hauptverzeichnis ausführen. Ein
 
 ### Was gemessen wurde
 
-- 179 Tests (`python -m unittest discover -s tests -p 'test_*.py'`) und 139 Mutanten (`python tests/mutants.py all`, etwa 3 Minuten): jeder Mutant lässt mindestens einen Test fehlschlagen.
+- 194 Tests (`python -m unittest discover -s tests -p 'test_*.py'`) und 153 Mutanten (`python tests/mutants.py all`, etwa 3 Minuten): jeder Mutant lässt mindestens einen Test fehlschlagen.
 - **AC10, Video-Pipeline** (`examples/video_pipeline/`): Download, Audio, Transkript, Frames, OCR, Zusammenbau und Auslieferung als Stufen. Bei einem 38-Sekunden-Video führte `kill -9` auf den Runner während der OCR (nach 1, 4, 9 und 17 Frames sowie einmal mit echtem Download von der URL) und ein zweiter `run` dazu, dass alle 7 Artefakte byteidentisch zu einem ununterbrochenen Lauf waren, keine fertige Stufe zweimal lief und kein Waisenprozess zurückblieb. Vier absichtlich kaputte Runner-Varianten lassen diese Prüfung fehlschlagen (`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`). An einer Kopie der fertigen Aufgabe führten das Löschen von `ocr/`, das Ändern von `asr.txt` und das Löschen des Ergebnisses der freigegebenen Stufe jeweils dazu, dass der nächste `run` nur die beschädigte Stufe neu machte (die freigegebene Stufe hielt mit Exit-Code 5 an und wurde erst nach `resolve --retry` neu gemacht), mit den ursprünglichen Bytes.
 - Whisper ist auf der verwendeten Maschine nicht bitgenau deterministisch: derselbe Clip ergab etwa bei jedem 6. bis 10. Lauf ein anderes Transkript. Das Beispiel legt Transkripte deshalb nach dem Hash ihres Audios ab, und AC10 zeigt, dass die Wiederaufnahme stimmt, nicht dass die Transkription deterministisch ist.
 - **AC9, Hermes-Host** (`examples/hermes_host/ac9.py`): eine Stufe führt `hermes chat --oneshot` unter `env -i` aus, die Antwort wird erfasst und geprüft; ein falscher Modellname lässt die Stufe fehlschlagen, und eine Stufe ohne `env -i` besteht die Canary-Prüfung nicht.
 
-- **Audit-Leiter** (`examples/audit_ladder/`): die Prüfung eines Git-Bereichs als Stufen, billigster Beleg zuerst. Die Tests laufen auf einem sauberen Checkout des committeten Heads und es wird ein Paket nur der geänderten Funktionen gebaut (kein Modell, und eine rote Suite stoppt alles); ein billiges Modell liest das Paket; jeder Befund braucht ein von dir geschriebenes Replay-Ergebnis; das teure Modell bekommt nur Ziel, Kriterien, geänderte Pfade, gemessene Zahlen und die geprüften Befunde, und seine Stufe braucht `approval`, gebunden an diesen Prompt (ändert sich der Prompt, ist die Freigabe ungültig). Ein Absturz oder ein weiterer Takt kostet keinen Modellaufruf. Getestet mit Platzhalter-Modellen, die nur ihre Aufrufe zählen; noch nicht mit einem echten Modell gemessen.
+- **Audit-Leiter** (`examples/audit_ladder/`): die Prüfung eines Git-Bereichs als Stufen, billigster Beleg zuerst. Die Tests laufen auf einem sauberen Checkout des committeten Heads und es wird ein Paket nur der geänderten Funktionen gebaut (kein Modell, und eine rote Suite stoppt alles); ein billiges Modell liest das Paket; jeder Befund braucht ein von dir geschriebenes Replay-Ergebnis; das teure Modell bekommt nur Ziel, Kriterien, geänderte Pfade, gemessene Zahlen und die geprüften Befunde, und seine Stufe braucht `approval`, gebunden an diesen Prompt (ändert sich der Prompt, ist die Freigabe ungültig). Ein Absturz oder ein weiterer Takt kostet für eine fertige Stufe keinen Modellaufruf; ein Aufruf, der beim Absturz noch lief, wird erneut gemacht. Getestet mit Platzhalter-Modellen, die nur ihre Aufrufe zählen; noch nicht mit einem echten Modell gemessen.
 
 ### Grenzen
 
