@@ -14,9 +14,13 @@
 
 [English](#english) · [简体中文](#zh-cn) · [Deutsch](#deutsch)
 
+[Goal / 项目目标 / Ziel](GOAL.md) · [First recovery example / 产物恢复入门 / Wiederaufnahme-Beispiel](docs/first-recovery.md)
+
 Version: **1.2.0** · [Design record / 设计记录 / Entwurfsprotokoll](ARCHITECTURE.md) · [Apache-2.0](LICENSE)
 
 ## English
+
+**Choosing a tool:** Use Makeextreme for known-stage pipelines with runnable checks. Use [Longhaul](https://github.com/dacheng-lu/longhaul) for exploratory work, decisions and evidence across sessions. Each works independently; a shared adapter is not implemented. [Try output recovery](docs/first-recovery.md).
 
 makeextreme is a small floor under agent pipelines whose stages are known in advance. It runs the stages of a task one after another, decides "done" from the **artifact** instead of an exit code, continues after a crash from the last green stage and never releases an irreversible stage on its own. It is a runner of about 600 lines in the Python standard library, not a framework, a scheduler or an agent.
 
@@ -52,7 +56,7 @@ Use it for a pipeline you run more than once, or one long enough to be killed ha
 git clone https://github.com/dacheng-lu/makeextreme
 cd makeextreme
 mkdir demo
-echo '[{"id": "hello", "run": "echo hi > out.txt", "check": "test -s out.txt"}]' > demo/stages.json
+echo '[{"id": "hello", "run": "echo hi > out.txt", "check": "test -s out.txt", "outputs": ["out.txt"]}]' > demo/stages.json
 python3 -m makeextreme run demo     # exit 0; run it again and the stage is skipped
 ```
 
@@ -85,6 +89,8 @@ Useful contributions include a reproducible crash-and-resume scenario, a stage y
 <a name="zh-cn"></a>
 
 ## 简体中文
+
+**如何选择：** 阶段已知、可用命令检查的流水线使用 Makeextreme；探索性任务、跨会话决策与证据管理可使用 [Longhaul](https://github.com/dacheng-lu/longhaul)。两者可以独立使用；共享适配器尚未实现。[体验产物恢复](docs/first-recovery.md)。
 
 makeextreme 是给「阶段已知」的 agent 流水线垫的一层地板。它按顺序执行任务的各个阶段，用**产物**（而不是退出码）判定「完成」，崩溃后从最后一个通过的阶段继续，并且不会自行放行不可逆的阶段。它是一个约 600 行、只用 Python 标准库的运行器，不是框架、调度器或 agent。
 
@@ -120,7 +126,7 @@ makeextreme 是给「阶段已知」的 agent 流水线垫的一层地板。它�
 git clone https://github.com/dacheng-lu/makeextreme
 cd makeextreme
 mkdir demo
-echo '[{"id": "hello", "run": "echo hi > out.txt", "check": "test -s out.txt"}]' > demo/stages.json
+echo '[{"id": "hello", "run": "echo hi > out.txt", "check": "test -s out.txt", "outputs": ["out.txt"]}]' > demo/stages.json
 python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段会被跳过
 ```
 
@@ -151,6 +157,8 @@ python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段�
 [文件与设计参考](#files-and-design-references) · [回到顶部](#登峰--makeextreme)
 
 ## Deutsch
+
+**Werkzeugwahl:** Makeextreme führt Pipelines mit bekannten Stufen und prüfbaren Ergebnissen aus; [Longhaul](https://github.com/dacheng-lu/longhaul) unterstützt offene Aufgaben, Entscheidungen und Belege über Sitzungen hinweg. Beide funktionieren unabhängig; ein gemeinsamer Adapter ist nicht implementiert. [Ausgabe-Wiederherstellung ausprobieren](docs/first-recovery.md).
 
 makeextreme ist ein kleiner Unterbau für Agenten-Pipelines, deren Stufen im Voraus bekannt sind. Er führt die Stufen einer Aufgabe nacheinander aus, entscheidet „fertig“ am **Artefakt** statt am Exit-Code, setzt nach einem Absturz bei der letzten grünen Stufe fort und gibt eine nicht umkehrbare Stufe nie von selbst frei. Er ist ein Runner von rund 600 Zeilen in der Python-Standardbibliothek, kein Framework, kein Scheduler und kein Agent.
 
@@ -186,7 +194,7 @@ Für eine Pipeline, die mehrfach läuft oder so lang ist, dass sie unterwegs bee
 git clone https://github.com/dacheng-lu/makeextreme
 cd makeextreme
 mkdir demo
-echo '[{"id": "hello", "run": "echo hi > out.txt", "check": "test -s out.txt"}]' > demo/stages.json
+echo '[{"id": "hello", "run": "echo hi > out.txt", "check": "test -s out.txt", "outputs": ["out.txt"]}]' > demo/stages.json
 python3 -m makeextreme run demo     # Exit-Code 0; ein zweiter Lauf überspringt die Stufe
 ```
 
