@@ -2,7 +2,8 @@
 
 Exit codes of `run`: 0 complete, 2 a stage failed, 3 locked by a live runner, 4 waiting for
 approval, 5 an irreversible stage crashed or failed, or its declared outputs changed after it ran, and needs `resolve`, 6 completion refused
-(secret-shaped value in task.json/journal.jsonl/approvals.jsonl), 64 invalid stages.json, an
+(secret-shaped value in task.json/journal.jsonl/approvals.jsonl), 7 a stage waits for a human's answer
+(it left `question.json` and did not run again), 64 invalid stages.json, an
 unreadable task.json or dependency, or a missing task directory, 130/143 stopped by SIGINT/SIGTERM.
 `approve` and `resolve` use 0 for done, 1 for a refusal (not an approval stage, artifact missing,
 stage not uncertain, check does not pass), 64 as above (`resolve` also 3 while a runner holds the lock).
@@ -13,6 +14,8 @@ from . import secret_scan
 
 RUN_ID_ENV = "MAKEEXTREME_RUN_ID"
 EX_FAILED, EX_LOCKED, EX_AWAITING, EX_UNCERTAIN, EX_SECRET, EX_SPEC = 2, 3, 4, 5, 6, 64
+EX_WAITING = 7
+QUESTION = "question.json"  # a stage's own file: while it stands, the stage asks a human and does not run
 
 
 class SpecError(Exception):
@@ -351,6 +354,16 @@ def approvals_path(d):
     return os.path.join(d, "approvals.jsonl")
 
 
+def question_digest(d):
+    """sha256 of the task's `question.json`, or None when no stage is asking. The text is never read into
+    the record: a question may quote anything, and the record has to stay free of whatever it quotes."""
+    try:
+        with open(os.path.join(d, QUESTION), "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
+
+
 def approved(d, sid, digest, since=0):
     """Is there an approval of exactly this stage and artifact that was written AFTER the stage last
     started (`since`)? An approval authorises one execution: it is spent when the stage starts, so an
@@ -395,6 +408,15 @@ def _run(t, d):
     signal.signal(signal.SIGINT, on_signal)
     for sp in t.spec:
         sid, s = sp["id"], t.st(sp["id"])
+        was_waiting = s["status"] == "waiting"
+        if was_waiting:  # a stage that asks a human waits until the answer arrives; it never runs again on its own
+            record = s.get("question") if isinstance(s.get("question"), dict) else {}
+            now_q = question_digest(d)
+            if now_q is not None and now_q == record.get("sha256"):
+                return EX_WAITING  # nothing to write: the record already says waiting, and a tick must cost nothing
+            s["status"] = "pending"  # the file is gone or was edited: the stage may look at the answer and run
+            s.pop("question", None)
+            t.log("question_cleared", stage=sid)
         try:
             fp = fingerprint(d, sp)
             now = out_hashes(d, sp) if s["status"] == "done" else {}
@@ -443,6 +465,7 @@ def _run(t, d):
         t.state["status"] = "running"
         t.save()
         t.log("start", stage=sid, attempt=s["attempts"])
+        before_q = question_digest(d)  # what stood there before this run: only a file the stage writes is its question
         proc = subprocess.Popen(sp["run"], shell=True, cwd=d, start_new_session=True,
                                 env={**os.environ, RUN_ID_ENV: run_id})
         cur["proc"] = proc
@@ -460,10 +483,19 @@ def _run(t, d):
         # writes must never leave `failed` behind (a plain run would repeat the irreversible command)
         s.update(status="done" if ok else ("uncertain" if sp.get("approval") else "failed"), rc=rc, check_rc=chk.returncode,
                  check_out=chk.stdout.strip()[:200])
-        if ok and outs:
-            s["sha256"] = outs  # this key name is exempt from the secret scan; any other turns the hashes into long_hex hits
         for k in ("pgid", "pg_start", "run_id"):
             s.pop(k, None)
+        after_q = question_digest(d)
+        if ok and after_q is not None and (after_q != before_q or was_waiting):
+            # the stage ended its run and says a human must answer. `done` would claim an artifact nobody has
+            # accepted, and running it again would repeat whatever it already did; the answer clears the file
+            s.update(status="waiting", question={"sha256": after_q})
+            t.state["status"] = "waiting"
+            t.save()
+            t.log("waiting_for_answer", stage=sid)
+            return EX_WAITING
+        if ok and outs:
+            s["sha256"] = outs  # this key name is exempt from the secret scan; any other turns the hashes into long_hex hits
         t.save()
         t.log("end", stage=sid, ok=ok, rc=rc, check_rc=chk.returncode, **({"missing": missing} if missing else {}))
         if not ok and sp.get("approval"):

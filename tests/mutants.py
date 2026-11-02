@@ -400,6 +400,8 @@ mut("RM4_roadmap_loses_a_section", "ROADMAP.md", "## Owed", "## Pending", (RM_T,
     "the roadmap has no section for what is still owed")
 mut("RM5_roadmap_lists_an_unreleased_version", "ROADMAP.md", "- **1.0.0** (2026-11-01):", "- **1.3.0** (2026-11-01):",
     (RM_T, "nothing_after"), "the roadmap lists a released version the code does not have")
+mut("Q1_question_counts_as_done", CORE, "if ok and after_q is not None and (after_q != before_q or was_waiting):", "if False:",
+    ("test_waiting.py", None), "a stage that leaves a question is reported as done")
 
 _controls = {}
 

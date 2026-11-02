@@ -1,0 +1,50 @@
+name: Platform smoke
+
+# Cheap proof of the platform contract, not a second full suite:
+# - the guard is decided from `os.name`, so it must hold on both families;
+# - on Windows the CLI has to refuse in one line with the documented exit code,
+#   instead of dying with `ModuleNotFoundError: No module named 'fcntl'`.
+# The Linux suite itself is not run here: tests/test_cron_tick.py has 13 failures on a
+# clean main (measured 2026-11-02), so a green Linux job is a separate change.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: the guard is decided from os.name, not from the host
+        run: python -m unittest discover -s tests -p "test_platform.py" -v
+
+      - name: the CLI refuses an unsupported platform in one line
+        shell: python
+        run: |
+          import platform, subprocess, sys
+          p = subprocess.run([sys.executable, "-m", "makeextreme", "run", "no-such-task"],
+                             capture_output=True, text=True)
+          print("exit:", p.returncode)
+          print("stderr:", p.stderr.strip())
+          assert p.returncode == 64, p.returncode
+          if platform.system() == "Windows":
+              assert "Linux-only" in p.stderr, "the refusal does not say why"
+              assert len(p.stderr.strip().splitlines()) == 1, "the refusal must be one line"
+          else:
+              assert "task directory does not exist" in p.stderr, "POSIX must reach the task check"

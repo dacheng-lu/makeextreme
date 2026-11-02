@@ -99,7 +99,8 @@ class ReadmeFacts(unittest.TestCase):
                 self.assertIn(token, have[name], "the %s section does not say %r" % (name, token))
 
     def test_every_exit_code_of_the_runner_is_listed_in_every_language(self):
-        codes = {0, core.EX_FAILED, core.EX_LOCKED, core.EX_AWAITING, core.EX_UNCERTAIN, core.EX_SECRET, core.EX_SPEC}
+        codes = {0, core.EX_FAILED, core.EX_LOCKED, core.EX_AWAITING, core.EX_UNCERTAIN, core.EX_SECRET, core.EX_SPEC,
+                 core.EX_WAITING}
         have = sections()
         for name in LANGS:
             for code in codes:
