@@ -14,7 +14,7 @@
 
 [English](#english) · [简体中文](#zh-cn) · [Deutsch](#deutsch)
 
-[Goal / 项目目标 / Ziel](GOAL.md) · [First recovery example / 产物恢复入门 / Wiederaufnahme-Beispiel](docs/first-recovery.md)
+[Crash and evidence demo / 中断与证据演示 / Absturz- und Nachweis-Demo](examples/longhaul_recovery/README.md) · [Goal / 项目目标 / Ziel](GOAL.md) · [First recovery example / 产物恢复入门 / Wiederaufnahme-Beispiel](docs/first-recovery.md)
 
 Version: **1.2.0** · [Design record / 设计记录 / Entwurfsprotokoll](ARCHITECTURE.md) · [Apache-2.0](LICENSE)
 

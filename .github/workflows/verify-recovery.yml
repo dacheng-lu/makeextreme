@@ -7,6 +7,7 @@ on:
     paths:
       - 'makeextreme/**'
       - 'tests/**'
+      - 'examples/longhaul_recovery/**'
       - 'README.md'
       - '.github/workflows/verify-recovery.yml'
   workflow_dispatch:
@@ -24,6 +25,11 @@ jobs:
         python: ['3.11', '3.14']
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: dacheng-lu/longhaul
+          ref: 22e9a19c99e9b9daf05a88a0efae05b565d6469a
+          path: _longhaul_demo
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -31,3 +37,5 @@ jobs:
         run: python -c "import os; assert os.readlink('/proc/self') == str(os.getpid())"
       - name: Run test suite
         run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Demonstrate real interruption and evidence invalidation
+        run: python examples/longhaul_recovery/demo.py --longhaul _longhaul_demo
