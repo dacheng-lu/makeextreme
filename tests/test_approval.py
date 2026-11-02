@@ -100,7 +100,24 @@ class Uncertain(TaskCase):
         mx("approve", d, "send")
         r = mx_start("run", d)
         self.assertTrue(wait_for(os.path.join(d, "rs")))
-        self.pgid = self.state(d)["stages"]["send"]["pgid"]
+        # The child can write rs before its parent saves pgid. Wait for the
+        # specific state this test needs rather than assuming those writes order.
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            pgid = self.state(d)["stages"]["send"].get("pgid")
+            if pgid is not None:
+                break
+            if r.poll() is not None:
+                break
+            time.sleep(0.01)
+        else:
+            pgid = None
+        if pgid is None:
+            if r.poll() is None:
+                r.terminate()
+            r.wait(timeout=5)
+            self.fail("runner did not record the stage process group")
+        self.pgid = pgid
         os.kill(r.pid, signal.SIGKILL)
         r.wait()
         return d
