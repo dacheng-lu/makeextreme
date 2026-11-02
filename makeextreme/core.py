@@ -23,12 +23,16 @@ class SpecError(Exception):
 
 
 def require_matching_proc():
-    """Refuse when /proc numbers are not in the namespace used by kill/getpid."""
+    """Refuse unless procfs reports exactly our current PID namespace."""
     try:
         proc_pid = os.readlink('/proc/self')
+        with open('/proc/self/status', encoding='utf-8') as f:
+            matches = [line.split()[1:] for line in f if line.startswith('NSpid:')]
     except OSError as e:
         raise SpecError('cannot verify /proc PID namespace; refusing to run') from e
-    if proc_pid != str(os.getpid()):
+    # NSpid lists IDs from the procfs mount's namespace to this process's
+    # namespace. Comparing numbers alone misses equal IDs in different levels.
+    if proc_pid != str(os.getpid()) or matches != [[str(os.getpid())]]:
         raise SpecError('/proc PID namespace does not match this process; refusing to run')
 
 
