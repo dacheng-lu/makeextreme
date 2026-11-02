@@ -9,7 +9,7 @@
 # crontab: */10 * * * * /path/to/makeextreme/examples/cron_tick.sh /path/to/task >> /path/to/tick.log 2>&1
 #
 # Exit code: 0 complete / busy / waiting for approval; 2 a stage failed (the next tick retries it);
-# 5 an uncertain stage needs a human; 69 no usable python interpreter (nothing ran); anything else = refused (invalid spec,
+# 5 an uncertain stage needs a human; 7 a stage waits for a human's answer; 69 no usable python interpreter (nothing ran); anything else = refused (invalid spec,
 # secret-shaped value in the record).
 # makeextreme ships no watchdog or restart daemon on purpose: cron is the restarter.
 set -u
@@ -28,6 +28,7 @@ case $rc in
   3) echo "makeextreme: busy (another runner holds the lock)"; rc=0 ;;
   4) echo "makeextreme: waiting for approval: cd $(q "$repo") && $(q "$py") -m makeextreme approve $(q "$task") <stage>"; rc=0 ;;
   5) echo "makeextreme: an UNCERTAIN stage needs a human: cd $(q "$repo") && $(q "$py") -m makeextreme resolve $(q "$task") <stage> --done | --retry" ;;
+  7) echo "makeextreme: waiting for an answer (question.json in the task directory): write it where the stage reads it, delete $(q "$task")/question.json, then the next tick continues" ;;
   2) echo "makeextreme: a stage failed; the next tick retries it" ;;
   *) echo "makeextreme: refused (rc=$rc), see the message above" ;;
 esac
