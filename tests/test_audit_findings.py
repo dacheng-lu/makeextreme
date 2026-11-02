@@ -24,14 +24,20 @@ class ProcNamespaceGuard(unittest.TestCase):
     def test_matching_mismatching_and_missing_proc(self):
         with mock.patch.object(core.os, 'getpid', return_value=42), \
              mock.patch.object(core.os, 'readlink', return_value='42'), \
+             mock.patch('builtins.open', mock.mock_open(read_data='NSpid:\t42\n')), \
              mock.patch.object(core, '_locked', return_value=17) as locked:
             self.assertEqual(core.run('task'), 17)
             locked.assert_called_once()
-        for result in ('999', OSError('no proc')):
-            with self.subTest(result=result), \
+        cases = [('999', 'NSpid:\t999 42\n'),
+                 ('42', 'NSpid:\t42 42\n'),  # equal IDs in different namespaces
+                 ('42', 'Name:\tpython\n'),
+                 (OSError('no proc'), '')]
+        for link, status in cases:
+            with self.subTest(link=link, status=status), \
                  mock.patch.object(core.os, 'getpid', return_value=42), \
-                 mock.patch.object(core.os, 'readlink', side_effect=result if isinstance(result, OSError) else None,
-                                   return_value=result if isinstance(result, str) else None), \
+                 mock.patch.object(core.os, 'readlink', side_effect=link if isinstance(link, OSError) else None,
+                                   return_value=link if isinstance(link, str) else None), \
+                 mock.patch('builtins.open', mock.mock_open(read_data=status)), \
                  mock.patch.object(core, '_locked') as locked, \
                  mock.patch.object(core.os, 'killpg') as killpg, \
                  contextlib.redirect_stderr(io.StringIO()):
@@ -40,6 +46,7 @@ class ProcNamespaceGuard(unittest.TestCase):
                     core.reap({'run_id': 'x'})
                 locked.assert_not_called()
                 killpg.assert_not_called()
+
 
 
 def sparse(d, name, gib):
