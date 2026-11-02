@@ -22,6 +22,16 @@ class SpecError(Exception):
     pass
 
 
+def require_matching_proc():
+    """Refuse when /proc numbers are not in the namespace used by kill/getpid."""
+    try:
+        proc_pid = os.readlink('/proc/self')
+    except OSError as e:
+        raise SpecError('cannot verify /proc PID namespace; refusing to run') from e
+    if proc_pid != str(os.getpid()):
+        raise SpecError('/proc PID namespace does not match this process; refusing to run')
+
+
 def atomic_write(path, obj):
     # SIGTERM/SIGINT stay pending from mkstemp until the cleanup below is in place, so a signal can
     # never land while the temp file exists and nothing is responsible for removing it
@@ -302,6 +312,7 @@ def acquire(d):
 def reap(s):
     """Kill what a crashed runner left behind: every process carrying the stage's run id
     (found via /proc, so it works even if the pgid never reached task.json), then its pgid."""
+    require_matching_proc()
     killed = set()
     needle = f"{RUN_ID_ENV}={s['run_id']}".encode() if s.get("run_id") else None
     for name in os.listdir("/proc") if needle else ():
@@ -538,6 +549,11 @@ def _locked(d, fn):
 
 
 def run(d):
+    try:
+        require_matching_proc()
+    except SpecError as e:
+        print(f'refused: {e}', file=sys.stderr)
+        return EX_SPEC
     return _locked(d, lambda t: _run(t, d))
 
 

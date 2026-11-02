@@ -20,6 +20,28 @@ from makeextreme import core  # noqa: E402
 KEY = "sk-" + "a1B2c3D4" * 4
 
 
+class ProcNamespaceGuard(unittest.TestCase):
+    def test_matching_mismatching_and_missing_proc(self):
+        with mock.patch.object(core.os, 'getpid', return_value=42), \
+             mock.patch.object(core.os, 'readlink', return_value='42'), \
+             mock.patch.object(core, '_locked', return_value=17) as locked:
+            self.assertEqual(core.run('task'), 17)
+            locked.assert_called_once()
+        for result in ('999', OSError('no proc')):
+            with self.subTest(result=result), \
+                 mock.patch.object(core.os, 'getpid', return_value=42), \
+                 mock.patch.object(core.os, 'readlink', side_effect=result if isinstance(result, OSError) else None,
+                                   return_value=result if isinstance(result, str) else None), \
+                 mock.patch.object(core, '_locked') as locked, \
+                 mock.patch.object(core.os, 'killpg') as killpg, \
+                 contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(core.run('task'), core.EX_SPEC)
+                with self.assertRaises(core.SpecError):
+                    core.reap({'run_id': 'x'})
+                locked.assert_not_called()
+                killpg.assert_not_called()
+
+
 def sparse(d, name, gib):
     with open(os.path.join(d, name), "wb") as f:
         f.truncate(gib << 30)
