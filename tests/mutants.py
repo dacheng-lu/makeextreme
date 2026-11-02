@@ -359,6 +359,16 @@ mut("L20_untrusted_note_missing", LAD, "text that models and people wrote about 
 # command ends, so no partial file can exist; test_a_runner_killed_during_the_cheap_call... is a characterization test, not a mutant target.
 mut("S7_module_unit_spans_first_to_last_changed_line", SLC, 'for a, b in runs:', 'for a, b in [[runs[0][0], runs[-1][1]]]:', (SLICE_T, "far_apart"),
     "two module-level edits far apart make the pack carry every function between them (found by the 1.1.1 audit)")
+mut("L22_parser_sees_the_text_as_sent", LAD, '    text = strip_invisible(text)\n    opens', '    opens', (LADDER_T, "in_front_of_the_severity"),
+    "an invisible character in front of `MAJOR` hides the finding from the parser (found by the Haiku audit replay)")
+mut("L23_clean_keeps_formatting_characters", LAD, 'unicodedata.category(ch) not in ("Cc", "Cf")', 'unicodedata.category(ch) != "Cc"', (LADDER_T, "invisible_formatting"),
+    "a bidi override or a zero-width mark reaches the final prompt (found by the Haiku audit)")
+mut("L24_zero_tests_accepted_by_the_step", LAD, '    if ran is not None and int(ran.group(1)) == 0:', '    if False:', (LADDER_T, "ran_zero_tests"),
+    "a suite that ran 0 tests fails only in the check, with no message")
+mut("L25_line_breaks_of_unicode_dropped", LAD, '.replace("\\x85", "\\n").replace("\\u2028", "\\n").replace("\\u2029", "\\n")', '', (LADDER_T, "separates_two_findings"),
+    "U+0085/U+2028/U+2029 inside model text are not turned into line breaks first: a MAJOR after one of them vanishes")
+mut("L26_readme_row_says_nothing_about_the_count_rule", "examples/audit_ladder/README.md", "--count-optional` (a suite that ran 0 tests still fails)", "`", (LADDER_T, "names_every_rule"),
+    "the README no longer names the knob that the tier0 stage tells you to use")
 mut("S1_outermost_function_wins", SLC, "(b - a) < (best[2] - best[1])", "(b - a) > (best[2] - best[1])", (SLICE_T, "nested"), "an outer function wins over the inner one that changed")
 mut("S2_new_file_has_no_range", SLC, 'ranges = [(1, max(len(lines), 1))]', 'ranges = []', (SLICE_T, "new_file"), "a new file contributes nothing")
 mut("S3_attribute_calls_ignored", SLC, "f.attr if isinstance(f, ast.Attribute) else None", "None", (SLICE_T, "caller"), "x.f() calls are not found")

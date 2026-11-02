@@ -287,6 +287,53 @@ class Findings(Ladder):
         self.assertEqual(sum(1 for line in prompt.splitlines() if line.startswith("SYSTEM:")), 0, "evidence started a line of its own")
         self.assertIn("untrusted", prompt.lower())
 
+    INVISIBLE = "\u202e\u202a\u2066\u2069\u200b\u200f\u2060\ufeff\x85\u2028\u2029"
+
+    def test_invisible_formatting_characters_do_not_reach_the_final_prompt(self):
+        """Found by the Haiku audit of d7acd43: clean() removed ASCII controls only, so a bidi override survived the claim 'one clean line'."""
+        self.say("cheap", "<FINDINGS>\n- MINOR: calc.py:5 - looks wrong %s end\n</FINDINGS>\n<VERDICT>PASS</VERDICT>\n" % self.INVISIBLE)
+        self.new_task()
+        self.replays({"F1": {"status": "not_reproduced", "evidence": "ran it %s fine" % self.INVISIBLE}})
+        self.assertEqual(self.run_task().returncode, 4)
+        prompt = self.out("final_prompt.md")
+        for ch in set(self.INVISIBLE):
+            self.assertNotIn(ch, prompt, "U+%04X reached the final prompt" % ord(ch))
+
+    def test_an_invisible_character_in_front_of_the_severity_does_not_hide_the_finding(self):
+        """The same replay showed the opposite hole: `- <U+200B>MAJOR: x` was dropped, so a MAJOR could vanish from the parse."""
+        for ch in ("\u200b", "\u202e", "\ufeff", "\x00", "\x1b"):
+            rep = audit_ladder.parse_report("<FINDINGS>\n- %sMAJOR: calc.py:5 - x\n</FINDINGS>\n<VERDICT>FAIL</VERDICT>" % ch)
+            self.assertEqual([f["severity"] for f in rep["findings"]], ["MAJOR"], repr(ch))
+
+    def test_a_unicode_line_break_inside_a_line_still_separates_two_findings(self):
+        """`- MINOR: a<U+0085>- MAJOR: b` must not collapse into one MINOR: the MAJOR would vanish."""
+        for br in ("\x85", "\u2028", "\u2029", "\n"):
+            rep = audit_ladder.parse_report("<FINDINGS>\n- MINOR: a%s- MAJOR: b\n</FINDINGS>\n<VERDICT>FAIL</VERDICT>" % br)
+            self.assertEqual([f["severity"] for f in rep["findings"]], ["MINOR", "MAJOR"], repr(br))
+
+    def test_a_bullet_that_starts_with_a_severity_word_in_any_case_is_a_finding_and_a_longer_word_is_not(self):
+        """A decision, pinned: over-reading costs one `not_reproduced` replay result; dropping a finding would cost a missed defect."""
+        cases = {"- major: b": ["MAJOR"], "- Major refactor would be nice": ["MAJOR"], "- minor: naming": ["MINOR"],
+                 "- Majority of callers": [], "- MINORITY report": [], "- planning notes": []}
+        for line, want in cases.items():
+            rep = audit_ladder.parse_report("<FINDINGS>\n%s\n</FINDINGS>\n<VERDICT>PASS</VERDICT>" % line)
+            self.assertEqual([f["severity"] for f in rep["findings"]], want, line)
+
+    def test_a_suite_that_ran_zero_tests_stops_with_a_message_even_when_the_count_is_optional(self):
+        for extra in ((), ("--count-optional",)):
+            self.setUp()
+            self.new_task("--suite", "echo Ran 0 tests; echo OK", *extra)
+            r = self.run_task()
+            self.assertEqual(r.returncode, 2, (extra, r.stdout, r.stderr))
+            self.assertEqual(self.stage_rc("tier0"), 1, "the step itself must refuse: the check is only the second lock")
+            self.assertIn("0 tests", r.stdout, extra)
+            self.assertEqual(self.calls("cheap"), 0, extra)
+
+    def test_the_example_readme_names_every_rule_that_can_stop_the_ladder(self):
+        text = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples", "audit_ladder", "README.md"), encoding="utf-8").read()
+        for needle in ("--count-optional", "no readable test count", "ran 0 tests", "FAIL verdict", "BLOCKER or MAJOR finding", "any case"):
+            self.assertIn(needle, text)
+
     def test_a_replay_without_evidence_does_not_count(self):
         self.say("cheap", MINOR)
         self.new_task()

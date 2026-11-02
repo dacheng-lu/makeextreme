@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -67,8 +68,16 @@ def fail(msg):
     return 1
 
 
+def strip_invisible(text):
+    """Characters a reader cannot see (controls, bidi overrides, zero-width marks) are removed; U+0085, U+2028 and U+2029 stay line breaks.
+    Without this a bidi mark or a zero-width space in front of `MAJOR` hid the finding from the parser."""
+    text = str(text).replace("\x85", "\n").replace("\u2028", "\n").replace("\u2029", "\n")
+    return "".join(ch for ch in text if ch in "\n\r\t" or unicodedata.category(ch) not in ("Cc", "Cf"))
+
+
 def parse_report(text):
     """Exactly one FINDINGS block and one VERDICT. A block that was opened and never closed is read up to the verdict and flagged."""
+    text = strip_invisible(text)
     opens = [m.start() for m in re.finditer(r"<FINDINGS>", text)]
     closes = [m.start() for m in re.finditer(r"</FINDINGS>", text)]
     verdicts = list(re.finditer(r"<VERDICT>(PASS|FAIL)</VERDICT>", text))
@@ -132,6 +141,8 @@ def step_tier0():
     atomic_write("pack.md", pack["markdown"])
     if rc != 0:
         return fail("the suite is red on %s (rc=%d): nothing is sent to any model while a deterministic check fails" % (sc["head"][:10], rc))
+    if ran is not None and int(ran.group(1)) == 0:
+        return fail("the suite ran 0 tests: a green suite with nothing in it proves nothing, whatever --count-optional says")
     if ran is None and not cfg.get("count_optional"):
         return fail("the suite is green but its output has no test count ('Ran N tests' or 'N passed'), so a deleted suite would look the same: "
                     "use a runner that prints one, or pass --count-optional to new_task.py to accept that")
@@ -205,7 +216,7 @@ def step_replay():
 
 def clean(text):
     """One plain line: control characters and line breaks of model-written text do not reach the final prompt."""
-    return " ".join(re.sub(r"[\x00-\x1f\x7f]+", " ", str(text)).split())
+    return " ".join(strip_invisible(text).split())
 
 
 def step_final_prompt():
