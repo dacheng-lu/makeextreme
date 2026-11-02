@@ -240,7 +240,7 @@ mut("R13_ac10_command_without_source_zh", "README.md", "会让这项检查失败
 mut("R14_ac10_command_without_source_de", "README.md", "lassen diese Prüfung fehlschlagen (`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`)",
     "lassen diese Prüfung fehlschlagen (`python examples/video_pipeline/ac10_mutants.py`)", (README_T, "ac10_mutants"),
     "the German section gives the AC10 mutant command without its required --source")
-mut("R6_logo_reference_is_broken", "README.md", 'src="assets/logo.jpg"', 'src="assets/logo-missing.jpg"',
+mut("R6_logo_reference_is_broken", "README.md", 'src="assets/logo-readme.svg"', 'src="assets/logo-missing.svg"',
     (README_T, "logo"), "the header shows a logo file that does not exist")
 mut("R7_de_loses_a_subsection", "README.md", "### Grenzen", "Grenzen", (README_T, "navigation"),
     "the German section has one subsection fewer than the others")
@@ -386,6 +386,10 @@ mut("R17_de_hides_the_tightening", "README.md", "1.1.0 akzeptierte eine solche A
 mut("RM2_roadmap_calls_a_tightening_a_patch", "ROADMAP.md", "a release that tightens what a task may declare, which is why it is a minor and not a patch version: two stages that declare the same output, or an output inside another stage's output, were accepted by 1.1.0",
     "a release: two stages that declare the same output, or an output inside another stage's output, used to work", (RM_T, "not_called_a_patch"),
     "the roadmap entry no longer says that the release refuses what the previous one accepted")
+mut("R18_header_logo_is_not_an_svg", "assets/logo-readme.svg", '<svg xmlns="http://www.w3.org/2000/svg"', '<html xmlns="http://www.w3.org/2000/svg"',
+    (README_T, "logo"), "the header logo file is not an SVG any more")
+mut("R19_header_logo_has_no_title", "assets/logo-readme.svg", '<title id="title">Makeextreme logo</title>', '',
+    (README_T, "logo"), "the header logo has no title for screen readers")
 mut("RM1_roadmap_lacks_the_current_version", "ROADMAP.md", "- **1.2.0** (2026-11-02):", "- **1.0.9** (2026-11-02):",
     (RM_T, "current_version"), "the roadmap does not list the version the code has as released")
 mut("RM2_roadmap_link_is_broken", "ROADMAP.md", "[NOTICE.md](NOTICE.md)", "[NOTICE.md](NOTICE-missing.md)",

@@ -34,6 +34,7 @@ PROSE_FACTS = ["3.11", "3.14", "Linux", "AC10", "AC9", "kill -9", "examples/cron
 PAGE_FACTS = ["Apache-2.0", "LICENSE", "SOURCES.md", "NOTICE.md", "ARCHITECTURE.md", "areeves/revenant",
               "dacheng-lu/longhaul", "assets/logo.jpg", "assets/social-preview.png"]
 LOGO, SOCIAL = "assets/logo.jpg", "assets/social-preview.png"
+HEADER_LOGO = "assets/logo-readme.svg"  # what the header shows since pull request #1 (2026-11-02); logo.jpg stays the listed original
 
 
 def page():
@@ -138,10 +139,15 @@ class ReadmeFacts(unittest.TestCase):
         self.assertEqual(text.count("(#files-and-design-references)"), 3, "each language should link to the shared tail")
 
     def test_the_logo_and_the_social_preview_are_real_images_the_page_uses(self):
-        self.assertRegex(page(), r'<img src="%s"[^>]*width="\d+"' % re.escape(LOGO), "the header does not show the logo")
+        self.assertRegex(page(), r'<img src="%s"[^>]*width="\d+"' % re.escape(HEADER_LOGO), "the header does not show the logo")
+        with open(os.path.join(REPO, HEADER_LOGO), "rb") as f:
+            header = f.read()
+        self.assertTrue(header.lstrip().startswith(b"<svg"), "the header logo is not an SVG")
+        self.assertIn(b"<title", header, "the header logo has no title for screen readers")
+        self.assertGreater(len(header), 10_000, "the header logo is too small to be the picture")
         with open(os.path.join(REPO, LOGO), "rb") as f:
             logo = f.read()
-        self.assertEqual(logo[:3], b"\xff\xd8\xff", "the logo is not a JPEG")
+        self.assertEqual(logo[:3], b"\xff\xd8\xff", "the original logo is not a JPEG")
         self.assertGreater(len(logo), 10_000)
         with open(os.path.join(REPO, SOCIAL), "rb") as f:
             png = f.read(33)
