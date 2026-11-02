@@ -73,7 +73,7 @@ The package is not installed; run it from the repository root. A larger task is 
 
 ### Boundaries
 
-- `run` refuses with exit 64 before creating a lock or starting a stage if `/proc/self` cannot be verified in the current PID namespace. This guard has not yet been tested in a matching PID namespace.
+- `run` refuses with exit 64 before creating a lock or starting a stage if `/proc/self` cannot be verified in the current PID namespace.
 - `approve` cannot tell who typed it. It stops an accidental release, not an agent that holds your shell.
 - A stage that calls `setsid` and clears its environment cannot be found and killed after a crash; a child that ignores SIGTERM lives until the next `run`.
 - State (`task.json`) and journal (`journal.jsonl`) are two writes; after a crash between them the journal can be one entry behind. `task.json` is authoritative.
@@ -144,7 +144,7 @@ python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段�
 
 ### 能力边界
 
-- 如果无法验证 `/proc/self` 与当前 PID 命名空间一致，`run` 会在创建锁或启动阶段之前以退出码 64 拒绝。这个保护尚未在匹配的 PID 命名空间中测试。
+- 如果无法验证 `/proc/self` 与当前 PID 命名空间一致，`run` 会在创建锁或启动阶段之前以退出码 64 拒绝。
 - `approve` 分辨不出是谁敲的。它能防止意外放行，防不住握着你 shell 的 agent。
 - 调用了 `setsid` 并清空环境变量的阶段，崩溃后找不到也杀不掉；忽略 SIGTERM 的子进程会活到下一次 `run`。
 - 状态（`task.json`）和日志（`journal.jsonl`）是两次写入；两次之间崩溃，日志可能少一条。以 `task.json` 为准。
@@ -213,7 +213,7 @@ Das Paket wird nicht installiert; im Repository-Hauptverzeichnis ausführen. Ein
 
 ### Grenzen
 
-- Wenn `/proc/self` nicht zur aktuellen PID-Namensraum passt oder nicht geprüft werden kann, verweigert `run` vor Lock und Stufenstart mit Exit-Code 64. Diese Prüfung ist noch nicht in einem passenden PID-Namensraum getestet.
+- Wenn `/proc/self` nicht zur aktuellen PID-Namensraum passt oder nicht geprüft werden kann, verweigert `run` vor Lock und Stufenstart mit Exit-Code 64.
 - `approve` kann nicht erkennen, wer es getippt hat. Es verhindert eine versehentliche Freigabe, keinen Agenten, der deine Shell hält.
 - Eine Stufe, die `setsid` aufruft und ihre Umgebung leert, wird nach einem Absturz weder gefunden noch beendet; ein Kindprozess, der SIGTERM ignoriert, lebt bis zum nächsten `run`.
 - Zustand (`task.json`) und Journal (`journal.jsonl`) sind zwei Schreibvorgänge; nach einem Absturz dazwischen kann das Journal einen Eintrag zurückliegen. Maßgeblich ist `task.json`.
