@@ -97,6 +97,7 @@ Useful contributions include a reproducible crash-and-resume scenario, a stage y
 
 [Files and design references](#files-and-design-references) · [Back to top](#登峰--makeextreme)
 
+<a id="zh-cn"></a>
 <a name="zh-cn"></a>
 
 ## 简体中文
