@@ -1,5 +1,7 @@
 """AC6 (approval bound to the artifact hash), the 'uncertain' state, and the orphan gap."""
 import json, os, signal, time, unittest
+from unittest import mock
+from makeextreme import core
 
 from support import TaskCase, gone, mx, mx_start, wait_for
 
@@ -176,6 +178,64 @@ class Uncertain(TaskCase):
         self.assertEqual(mx("resolve", d, "send", "--retry").returncode, 0)
         self.assertEqual(mx("run", d).returncode, 0)
         self.assertEqual(self.lines(d, "rs"), 2)
+
+
+class ChangedUncertainDefinition(TaskCase):
+    def uncertain(self):
+        spec = [send(run='echo original > action', check='touch checked')]
+        d = self.task(spec, {'artifact.txt': 'approved'})
+        digest = core.fingerprint(d, spec[0])
+        self.write(d, 'task.json', json.dumps({'status': 'uncertain', 'stages': {
+            'send': {'status': 'uncertain', 'attempts': 1, 'digest': digest}}}))
+        return d, spec
+
+    def test_removed_approval_cannot_be_resolved_or_retried(self):
+        d, spec = self.uncertain()
+        spec[0].pop('approval')
+        self.write(d, 'stages.json', json.dumps(spec))
+        before = self.sha(d)
+        for mode in ('--done', '--retry'):
+            self.assertEqual(core.resolve(d, 'send', mode), 1)
+            self.assertEqual(self.sha(d), before)
+        self.assertFalse(os.path.exists(os.path.join(d, 'checked')))
+
+    def test_changed_definition_cannot_be_marked_as_the_old_execution(self):
+        d, spec = self.uncertain()
+        spec[0]['run'] = 'echo changed > action'
+        self.write(d, 'stages.json', json.dumps(spec))
+        before = self.sha(d)
+        self.assertEqual(core.resolve(d, 'send', '--done'), 1)
+        self.assertEqual(self.sha(d), before)
+        self.assertFalse(os.path.exists(os.path.join(d, 'checked')))
+
+    def test_approval_removed_after_retry_never_runs(self):
+        d, spec = self.uncertain()
+        self.assertEqual(core.resolve(d, 'send', '--retry'), 0)
+        spec[0].pop('approval')
+        self.write(d, 'stages.json', json.dumps(spec))
+        with mock.patch.object(core.signal, 'signal'):
+            self.assertEqual(core._run(core.Task(d), d), core.EX_UNCERTAIN)
+        self.assertEqual(self.state(d)['stages']['send']['status'], 'uncertain')
+        self.assertFalse(os.path.exists(os.path.join(d, 'action')))
+
+    def test_changed_dependencies_cannot_be_marked_done(self):
+        d, spec = self.uncertain()
+        self.write(d, 'artifact.txt', 'changed')
+        before = self.sha(d)
+        self.assertEqual(core.resolve(d, 'send', '--done'), 1)
+        self.assertEqual(self.sha(d), before)
+        self.assertFalse(os.path.exists(os.path.join(d, 'checked')))
+
+    def test_check_that_changes_a_dependency_cannot_mark_done(self):
+        d, spec = self.uncertain()
+        spec[0]['check'] = 'echo changed > artifact.txt'
+        self.write(d, 'stages.json', json.dumps(spec))
+        state = self.state(d)
+        state['stages']['send']['digest'] = core.fingerprint(d, spec[0])
+        self.write(d, 'task.json', json.dumps(state))
+        before = self.sha(d)
+        self.assertEqual(core.resolve(d, 'send', '--done'), 1)
+        self.assertEqual(self.sha(d), before)
 
 
 class FailedIrreversible(TaskCase):
