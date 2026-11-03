@@ -12,10 +12,19 @@ This page is in English; the design record it points to ([ARCHITECTURE.md](ARCHI
 
 No tags and no GitHub Releases exist yet.
 
+## In development on main
+
+The `resolve` hardening refuses `--done` when the uncertain stage's fingerprint or
+declared dependencies changed, or when its check changes those dependencies.
+Removing an approval requirement before resolving or after a retry decision is
+refused. Restore the requirement and, for `--done`, the original fingerprint.
+These changes are not yet part of a numbered release. The fingerprint checks do
+not prevent concurrent edits after the check, and they cannot prove external effects.
+
 ## Owed
 
 - **The project's own copyright line.** `LICENSE` ends with Apache-2.0's appendix boilerplate (`Copyright [yyyy] [name of copyright owner]`), which is part of the license text and stays verbatim. The project's own copyright statement (a line in `NOTICE.md` and/or source headers) is not written yet and needs the author's choice of name.
-- **Core findings of the D19 audit that 1.2.0 does not fix** (all MINOR, all replayed; each needs a design decision or is rare): `approve` is accepted for a stage that is already done or uncertain and then stays armed, so one extra execution is released after an artifact A→B→A round trip; `resolve --retry` after `"approval"` was removed from the spec while the stage was uncertain executes without an approval on record; a stage id removed from the spec while uncertain leaves the task complete with that stage still `uncertain`; SIGTERM after the last stage but before exit rewrites a finished task as `interrupted` (the next run heals it without re-executing); a `task.json` that is valid JSON of the wrong shape crashes with a traceback instead of exit 64; `resolve --done` after a spec edit stamps the new command's fingerprint so the new command never runs; `approve` takes no run lock and can bind a half-written artifact (it fails closed).
+- **Core findings of the D19 audit that 1.2.0 does not fix** (all MINOR, all replayed; each needs a design decision or is rare): `approve` is accepted for a stage that is already done or uncertain and then stays armed, so one extra execution is released after an artifact A→B→A round trip; a stage id removed from the spec while uncertain leaves the task complete with that stage still `uncertain`; SIGTERM after the last stage but before exit rewrites a finished task as `interrupted` (the next run heals it without re-executing); a `task.json` that is valid JSON of the wrong shape crashes with a traceback instead of exit 64; `approve` takes no run lock and can bind a half-written artifact (it fails closed).
 - **Finding of the second audit that is documented, not fixed** (replayed; MINOR): the overlap refusal is decided once, at load, from the symlinks that exist at that moment, so a stage that creates `ln -sfn task.json alias` after the first run makes the next `run` refuse the whole task with exit 64 (the refusal is reported, nothing is run).
 - **Authoritative trademark checks (USPTO, EUIPO, DPMA).** Only non-authoritative checks were done: no GitHub repository or user, PyPI package or npm package of the same name, `makeextreme.com` returned no whois match, and a web search found no brand of that name. The official registers were not searched. They are needed before any step that makes the name harder to change, such as a PyPI release.
 

@@ -50,6 +50,8 @@ Use it for a pipeline you run more than once, or one long enough to be killed ha
 - A stage marked `"approval": "required"` (it must declare `deps`) waits for `python -m makeextreme approve <task_dir> <stage>`. The approval is bound to the stage and to the hash of its artifact, and one approval releases one execution. If such a stage crashes or fails it becomes *uncertain* and is never repeated automatically; look at the outside world, then `python -m makeextreme resolve <task_dir> <stage> --done` or `--retry`.
 - Exit codes of `run`: `0` complete, `2` a stage failed, `3` locked by a live runner, `4` waiting for approval, `5` an uncertain stage needs `resolve`, `6` refused (a secret-shaped value in the record), `7` a stage waits for a human's answer (it left `question.json`), `64` refused cleanly, nothing runs: an invalid or missing `stages.json` or task directory, a damaged `task.json`, or a declared output that cannot be read.
 
+A stage in `uncertain` cannot be resolved while its approval requirement is removed. `resolve --done` also refuses if the stage definition or declared dependencies changed since the uncertain run. Restoring the original specification and dependencies is required for `--done`. A changed fingerprint requires approval before a retry.
+
 ### Get started
 
 ```bash
@@ -64,7 +66,7 @@ The package is not installed; run it from the repository root. A larger task is 
 
 ### What was measured
 
-- 213 tests (`python -m unittest discover -s tests -p 'test_*.py'`) and 165 mutants (`python tests/mutants.py all`, about 3 minutes): every mutant makes at least one test fail.
+- 218 tests (`python -m unittest discover -s tests -p 'test_*.py'`) and 165 mutants (`python tests/mutants.py all`, about 3 minutes): every mutant makes at least one test fail.
 - **AC10, video pipeline** (`examples/video_pipeline/`): download, audio, transcript, frames, OCR, assembly and delivery as stages. On a 38-second video, `kill -9` of the runner during OCR (after 1, 4, 9 and 17 frames, and once with a real download from the URL) and a second `run` gave all 7 artifacts byte-identical to an uninterrupted run, no finished stage ran twice, and no orphan process stayed. Four deliberately broken runner variants make that check fail (`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`). On a copy of the finished task, deleting `ocr/`, editing `asr.txt` and deleting the approved stage's output each made the next `run` redo only the damaged stage (the approved stage stopped with exit 5 and was made again only after `resolve --retry`), with the original bytes back.
 - Whisper is not bit-deterministic on the machine used: the same clip gave two different transcripts in about 1 run out of 6 to 10. The example therefore caches a transcript by the hash of its audio, and AC10 shows that runs resume correctly, not that transcription is deterministic.
 - **AC9, Hermes host** (`examples/hermes_host/ac9.py`): a stage runs `hermes chat --oneshot` under `env -i`, the answer is captured and checked; a wrong model name fails the stage, and a stage without `env -i` fails the canary check.
@@ -121,6 +123,8 @@ makeextreme 是给「阶段已知」的 agent 流水线垫的一层地板。它�
 - 标了 `"approval": "required"` 的阶段（必须声明 `deps`）要等 `python -m makeextreme approve <task_dir> <stage>`。批准绑定阶段和产物的哈希，一次批准只放行一次执行。这样的阶段如果崩溃或失败，会变成「不确定」，绝不自动重跑；先去外部世界核实，再用 `python -m makeextreme resolve <task_dir> <stage> --done` 或 `--retry` 决定。
 - `run` 的退出码：`0` 完成，`2` 某阶段失败，`3` 被存活的运行器锁住，`4` 等待批准，`5` 有不确定阶段需要 `resolve`，`6` 拒绝完成（记录里有形似密钥的值），`7` 某阶段在等一个人的答复（它留下了 `question.json`），`64` 干净地拒绝、什么都不运行：`stages.json` 或任务目录无效或缺失、`task.json` 损坏，或声明的产物读不出来。
 
+阶段处于 `uncertain` 时，必须保留审批要求才能处理；如果阶段定义或声明的依赖与不确定运行时不同，`resolve --done` 会拒绝。要使用 `--done`，请先恢复原定义与依赖；指纹变化后的重试需要批准。
+
 ### 开始使用
 
 ```bash
@@ -135,7 +139,7 @@ python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段�
 
 ### 实测了什么
 
-- 213 个测试（`python -m unittest discover -s tests -p 'test_*.py'`）和 165 个变异体（`python tests/mutants.py all`，约 3 分钟）：每个变异体都会让至少一个测试失败。
+- 218 个测试（`python -m unittest discover -s tests -p 'test_*.py'`）和 165 个变异体（`python tests/mutants.py all`，约 3 分钟）：每个变异体都会让至少一个测试失败。
 - **AC10，视频流水线**（`examples/video_pipeline/`）：下载、音频、转写、抽帧、OCR、拼装、交付各为一个阶段。在一段 38 秒的视频上，OCR 期间对运行器 `kill -9`（分别在第 1、4、9、17 帧之后，另有一次用真实 URL 下载），再运行一次后，7 个产物与不中断的一次逐字节相同，没有已完成的阶段被重跑，也没有残留的孤儿进程。四个故意弄坏的运行器变体会让这项检查失败（`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`）。在已完成任务的副本上，删掉 `ocr/`、改动 `asr.txt`、删掉已批准阶段的产物，下一次 `run` 都只重做被破坏的那个阶段（已批准的阶段以退出码 5 停下，`resolve --retry` 之后才重做），原来的字节都回来了。
 - 在所用机器上 Whisper 不是逐位确定的：同一段音频约每 6 到 10 次会出现一次不同的转写。因此示例按音频哈希缓存转写，AC10 证明的是「恢复正确」，不是「转写确定」。
 - **AC9，Hermes 宿主**（`examples/hermes_host/ac9.py`）：一个阶段在 `env -i` 下运行 `hermes chat --oneshot`，答案被捕获并检查；模型名写错会让阶段失败，没有 `env -i` 的阶段会过不了金丝雀检查。
@@ -190,6 +194,8 @@ Für eine Pipeline, die mehrfach läuft oder so lang ist, dass sie unterwegs bee
 - Eine Stufe mit `"approval": "required"` (sie muss `deps` angeben) wartet auf `python -m makeextreme approve <task_dir> <stage>`. Die Freigabe ist an die Stufe und den Hash ihres Artefakts gebunden, und eine Freigabe erlaubt genau eine Ausführung. Stürzt so eine Stufe ab oder schlägt sie fehl, wird sie *unsicher* und nie automatisch wiederholt; erst die Außenwelt prüfen, dann `python -m makeextreme resolve <task_dir> <stage> --done` oder `--retry`.
 - Exit-Codes von `run`: `0` fertig, `2` eine Stufe ist fehlgeschlagen, `3` von einem lebenden Runner gesperrt, `4` wartet auf Freigabe, `5` eine unsichere Stufe braucht `resolve`, `6` abgelehnt (ein schlüsselähnlicher Wert im Protokoll), `7` eine Stufe wartet auf die Antwort eines Menschen (sie hat `question.json` hinterlassen), `64` sauber abgelehnt, nichts läuft: ungültige oder fehlende `stages.json` oder Aufgabenverzeichnis, beschädigte `task.json` oder eine deklarierte Ausgabe, die sich nicht lesen lässt.
 
+Eine `uncertain`-Stufe kann nur mit beibehaltener Freigabepflicht geklärt werden. `resolve --done` verweigert, wenn Definition oder deklarierte Abhängigkeiten seit dem unsicheren Lauf geändert wurden. Für `--done` zuerst die ursprüngliche Definition und Abhängigkeiten wiederherstellen; bei geändertem Fingerabdruck braucht ein erneuter Lauf eine Freigabe.
+
 ### Einstieg
 
 ```bash
@@ -204,7 +210,7 @@ Das Paket wird nicht installiert; im Repository-Hauptverzeichnis ausführen. Ein
 
 ### Was gemessen wurde
 
-- 213 Tests (`python -m unittest discover -s tests -p 'test_*.py'`) und 165 Mutanten (`python tests/mutants.py all`, etwa 3 Minuten): jeder Mutant lässt mindestens einen Test fehlschlagen.
+- 218 Tests (`python -m unittest discover -s tests -p 'test_*.py'`) und 165 Mutanten (`python tests/mutants.py all`, etwa 3 Minuten): jeder Mutant lässt mindestens einen Test fehlschlagen.
 - **AC10, Video-Pipeline** (`examples/video_pipeline/`): Download, Audio, Transkript, Frames, OCR, Zusammenbau und Auslieferung als Stufen. Bei einem 38-Sekunden-Video führte `kill -9` auf den Runner während der OCR (nach 1, 4, 9 und 17 Frames sowie einmal mit echtem Download von der URL) und ein zweiter `run` dazu, dass alle 7 Artefakte byteidentisch zu einem ununterbrochenen Lauf waren, keine fertige Stufe zweimal lief und kein Waisenprozess zurückblieb. Vier absichtlich kaputte Runner-Varianten lassen diese Prüfung fehlschlagen (`python examples/video_pipeline/ac10_mutants.py --source <file-or-url>`). An einer Kopie der fertigen Aufgabe führten das Löschen von `ocr/`, das Ändern von `asr.txt` und das Löschen des Ergebnisses der freigegebenen Stufe jeweils dazu, dass der nächste `run` nur die beschädigte Stufe neu machte (die freigegebene Stufe hielt mit Exit-Code 5 an und wurde erst nach `resolve --retry` neu gemacht), mit den ursprünglichen Bytes.
 - Whisper ist auf der verwendeten Maschine nicht bitgenau deterministisch: derselbe Clip ergab etwa bei jedem 6. bis 10. Lauf ein anderes Transkript. Das Beispiel legt Transkripte deshalb nach dem Hash ihres Audios ab, und AC10 zeigt, dass die Wiederaufnahme stimmt, nicht dass die Transkription deterministisch ist.
 - **AC9, Hermes-Host** (`examples/hermes_host/ac9.py`): eine Stufe führt `hermes chat --oneshot` unter `env -i` aus, die Antwort wird erfasst und geprüft; ein falscher Modellname lässt die Stufe fehlschlagen, und eine Stufe ohne `env -i` besteht die Canary-Prüfung nicht.
