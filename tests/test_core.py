@@ -118,6 +118,54 @@ class Core(TaskCase):
             os.unlink(os.path.join(d, "task.json"))  # the message's own advice: delete it to start over
             self.assertEqual(mx("run", d).returncode, 0)  # and the lock was released
 
+    def test_a_task_json_of_the_wrong_shape_is_refused_cleanly_and_left_alone(self):
+        """A task.json that parses but is not the record's shape is damaged too.
+
+        Found while contributing: `[]`, a record without 'stages', a 'stages' that is
+        not an object, a stage that is not an object and a stage without 'status' each
+        ended in a TypeError/KeyError traceback with exit 1, although the README says
+        exit 64 covers a damaged task.json and `tests/test_readme.py` checks that line.
+        """
+        cases = {
+            "a list": "[]",
+            "no status": '{"stages": {}}',
+            "status not a string": '{"status": 1, "stages": {}}',
+            "no stages": '{"status": "new"}',
+            "stages not an object": '{"status": "new", "stages": []}',
+            "a stage that is not an object": '{"status": "new", "stages": {"s": []}}',
+            "a stage without status": '{"status": "new", "stages": {"s": {"attempts": 0}}}',
+        }
+        for label, damaged in cases.items():
+            d = self.task([{"id": "s", "run": "echo ok >> c", "check": "test -s c"}])
+            self.write(d, "task.json", damaged)
+            res = mx("run", d)
+            self.assertEqual(res.returncode, 64, (label, res.stderr))
+            self.assertNotIn("Traceback", res.stderr, label)
+            self.assertIn("task.json", res.stderr, label)
+            self.assertEqual(self.read(d, "task.json"), damaged, label)  # left alone
+            self.assertEqual(self.lines(d, "c"), 0, label)  # nothing ran
+            os.unlink(os.path.join(d, "task.json"))
+            self.assertEqual(mx("run", d).returncode, 0, (label, "after deleting it"))  # lock released
+
+    @unittest.skipIf(os.geteuid() == 0, "root reads a file with mode 000")
+    def test_an_unreadable_task_json_is_refused_cleanly(self):
+        """A task.json that exists but cannot be opened is refused, not a traceback.
+
+        Before this fix it ended in a PermissionError traceback with exit 1.
+        """
+        d = self.task([{"id": "s", "run": "echo ok >> c", "check": "test -s c"}])
+        self.write(d, "task.json", '{"status": "new", "stages": {}}')
+        p = os.path.join(d, "task.json")
+        os.chmod(p, 0)
+        try:
+            res = mx("run", d)
+        finally:
+            os.chmod(p, 0o644)
+        self.assertEqual(res.returncode, 64, res.stderr)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertIn("task.json", res.stderr)
+        self.assertEqual(self.lines(d, "c"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

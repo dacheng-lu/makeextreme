@@ -256,6 +256,32 @@ def load_spec(d):
     return spec
 
 
+def _refuse_damaged_state(state):
+    """A task.json that parses but is not this record's shape is damaged too.
+
+    Without this, the first access fails as a TypeError or KeyError traceback with
+    exit 1, while the README promises exit 64 for a damaged task.json. The wording
+    differs from the unreadable case on purpose: tests/mutants.py replaces that
+    message by exact string match.
+    """
+    advice = ("restore it from a copy, or delete task.json and approvals.jsonl to start "
+              "the task over (approvals are spent by the runs recorded in task.json, so "
+              "keeping them would release the stages again)")
+    if not isinstance(state, dict):
+        raise SpecError(f"task.json is damaged (expected an object, found "
+                        f"{type(state).__name__}); {advice}")
+    if not isinstance(state.get("status"), str):
+        raise SpecError(f"task.json is damaged ('status' is missing or not a string); {advice}")
+    stages = state.get("stages")
+    if not isinstance(stages, dict):
+        raise SpecError(f"task.json is damaged ('stages' is missing or not an object); {advice}")
+    for sid, rec in stages.items():
+        if not isinstance(rec, dict):
+            raise SpecError(f"task.json is damaged (stage {sid!r} is not an object); {advice}")
+        if not isinstance(rec.get("status"), str):
+            raise SpecError(f"task.json is damaged (stage {sid!r} has no 'status'); {advice}")
+
+
 class Task:
     def __init__(self, d):
         self.d = d
@@ -270,6 +296,11 @@ class Task:
                                 "approvals.jsonl aside to start the task over (approvals are spent by "
                                 "the runs recorded in task.json, so keeping them would release the "
                                 "stages again)")
+            except OSError as e:
+                raise SpecError(f"task.json cannot be read ({e.strerror or e}); check the file's "
+                                "permissions, or delete task.json and approvals.jsonl to start the "
+                                "task over (approvals are spent by the runs recorded in task.json)")
+            _refuse_damaged_state(self.state)
         else:
             self.state = {"status": "new", "stages": {}}
 

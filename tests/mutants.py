@@ -84,6 +84,9 @@ mut("L2_no_lock", CORE, '        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\
 mut("D1_damaged_state_traceback", CORE, '            except ValueError as e:\n                raise SpecError(f"task.json',
     '            except KeyError as e:\n                raise SpecError(f"task.json', (CORE_T, "damaged"),
     "a damaged task.json escapes as a traceback")
+mut("D1b_wrong_shape_state_traceback", CORE, '    if not isinstance(state, dict):\n        raise SpecError(f"task.json is damaged (expected an object, found "',
+    '    return\n    if not isinstance(state, dict):\n        raise SpecError(f"task.json is damaged (expected an object, found "',
+    (CORE_T, "wrong_shape"), "a task.json of the wrong shape escapes as a TypeError/KeyError traceback")
 mut("D2_invalid_json_traceback", CORE, '    except ValueError as e:\n        raise SpecError(f"invalid stages.json: not valid JSON',
     '    except KeyError as e:\n        raise SpecError(f"invalid stages.json: not valid JSON', (CORE_T, "clean_refusal"),
     "an invalid stages.json escapes as a traceback")
