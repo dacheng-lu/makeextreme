@@ -47,3 +47,7 @@ do not let model-written task records alter trusted execution or approval policy
 Stop a milestone when its cases pass and remaining gaps are documented; do not
 add capabilities merely to increase scope. Human approval and host permissions
 remain authoritative for consequential actions.
+
+## Value evidence
+
+Offer a reproducible offline value-experiment example that reports observations and costs without presenting synthetic data as customer evidence. Validate it on an external user workflow before claiming adoption or savings. The runner checks declared artifacts, not demand or commercial truth.

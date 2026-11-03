@@ -454,6 +454,9 @@ def _run(t, d):
     signal.signal(signal.SIGINT, on_signal)
     for sp in t.spec:
         sid, s = sp["id"], t.st(sp["id"])
+        if s.get("retry") is not None and not sp.get("approval"):
+            return t.halt("uncertain", sid, EX_UNCERTAIN, "uncertain",
+                          reason="approval removed after a retry decision")
         was_waiting = s["status"] == "waiting"
         if was_waiting:  # a stage that asks a human waits until the answer arrives; it never runs again on its own
             record = s.get("question") if isinstance(s.get("question"), dict) else {}
@@ -626,7 +629,14 @@ def resolve(d, sid, mode):
         if s is None or sp is None or s["status"] != "uncertain":
             print(f"refused: {sid!r} is not uncertain", file=sys.stderr)
             return 1
+        if not sp.get("approval"):
+            print("refused: restore the approval requirement before resolving", file=sys.stderr)
+            return 1
         if mode == "--done":
+            original = s.get("digest")
+            if not isinstance(original, str) or not original or fingerprint(d, sp) != original:
+                print("refused: stage definition or dependencies changed since the uncertain run", file=sys.stderr)
+                return 1
             chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True, errors="replace")
             if chk.returncode != 0:
                 print("refused: the stage's check does not pass, so it cannot be marked done", file=sys.stderr)
@@ -640,7 +650,10 @@ def resolve(d, sid, mode):
                 print("refused: declared output missing, so the stage cannot be marked done: " + ", ".join(missing),
                       file=sys.stderr)
                 return 1
-            s.update(status="done", digest=fingerprint(d, sp), check_rc=0, check_out=chk.stdout.strip()[:200])
+            if fingerprint(d, sp) != original:
+                print("refused: stage dependencies changed during the check", file=sys.stderr)
+                return 1
+            s.update(status="done", digest=original, check_rc=0, check_out=chk.stdout.strip()[:200])
             if outs:
                 s["sha256"] = outs  # this decision takes the outputs as they are now, not any later content
             else:

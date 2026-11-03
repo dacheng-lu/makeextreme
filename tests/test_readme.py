@@ -29,7 +29,7 @@ COMMANDS = ["python -m makeextreme run <task_dir>",
             "python -m makeextreme resolve <task_dir> <stage>"]
 # facts every language section states in its own words (identifiers stay in Latin letters)
 PROSE_FACTS = ["3.11", "3.14", "Linux", "AC10", "AC9", "kill -9", "examples/cron_tick.sh", "stages.json", "approval",
-               "env -i", "setsid", "SIGTERM", "task.json", "journal.jsonl", "2026-11-01", "Sonnet 5.5", "Longhaul"]
+               "env -i", "setsid", "SIGTERM", "task.json", "journal.jsonl", "2026-11-01", "Longhaul"]
 # facts the shared tail of the page states once
 PAGE_FACTS = ["Apache-2.0", "LICENSE", "SOURCES.md", "NOTICE.md", "ARCHITECTURE.md", "areeves/revenant",
               "dacheng-lu/longhaul", "assets/logo.jpg", "assets/social-preview.png"]

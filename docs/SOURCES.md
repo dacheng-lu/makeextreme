@@ -40,7 +40,7 @@
 |---|---|
 | `ponytail` | 登峰自己的开发纪律：先查有没有现成的，最小完整改动，`shortcut:` 账本；**对方案偷懒，不对阅读偷懒** |
 | `test-driven-development`、`systematic-debugging`（含 Premise Rule） | M1 开发流程；探针先 RED 再 GREEN；同一前提两次失败就怀疑前提（这次 step-0 三次探针自错就是例子） |
-| `requesting-code-review`（含 Step 4b/4c/6b） | M1 里程碑的 Sonnet 中间审计 + Opus 终审的清单 |
+| `requesting-code-review`（含 Step 4b/4c/6b） | M1 里程碑审查与最终审查的清单 |
 | `eval-harness-integrity` | 防止"自己出题自己评分"；变异测试的口径 |
 | `context-handoff` | 任务跨 harness / 跨会话交接时的结构 |
 | `trio-dev-loop`、`three-model-roundtable`、`grill-me`、`spike` | 开发流程与决策；**登峰不重复实现**它们 |
