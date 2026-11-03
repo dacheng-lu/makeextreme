@@ -290,7 +290,7 @@ class Findings(Ladder):
     INVISIBLE = "\u202e\u202a\u2066\u2069\u200b\u200f\u2060\ufeff\x85\u2028\u2029"
 
     def test_invisible_formatting_characters_do_not_reach_the_final_prompt(self):
-        """Found by the Haiku audit of d7acd43: clean() removed ASCII controls only, so a bidi override survived the claim 'one clean line'."""
+        """Found by the audit of d7acd43: clean() removed ASCII controls only, so a bidi override survived the claim 'one clean line'."""
         self.say("cheap", "<FINDINGS>\n- MINOR: calc.py:5 - looks wrong %s end\n</FINDINGS>\n<VERDICT>PASS</VERDICT>\n" % self.INVISIBLE)
         self.new_task()
         self.replays({"F1": {"status": "not_reproduced", "evidence": "ran it %s fine" % self.INVISIBLE}})

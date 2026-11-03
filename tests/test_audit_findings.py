@@ -1,4 +1,4 @@
-"""Findings of the M1 milestone audit (Sonnet, 2026-11-01), each with the test that was red first.
+"""Findings of the M1 milestone audit (2026-11-01), each with the test that was red first.
 
 E1 a SIGTERM between two stages undid the stage that had just finished
 E2 a child that ignores SIGTERM kept running while the next run started the stage again

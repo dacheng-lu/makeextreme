@@ -360,9 +360,9 @@ mut("L20_untrusted_note_missing", LAD, "text that models and people wrote about 
 mut("S7_module_unit_spans_first_to_last_changed_line", SLC, 'for a, b in runs:', 'for a, b in [[runs[0][0], runs[-1][1]]]:', (SLICE_T, "far_apart"),
     "two module-level edits far apart make the pack carry every function between them (found by the 1.1.1 audit)")
 mut("L22_parser_sees_the_text_as_sent", LAD, '    text = strip_invisible(text)\n    opens', '    opens', (LADDER_T, "in_front_of_the_severity"),
-    "an invisible character in front of `MAJOR` hides the finding from the parser (found by the Haiku audit replay)")
+    "an invisible character in front of `MAJOR` hides the finding from the parser (found by the audit replay)")
 mut("L23_clean_keeps_formatting_characters", LAD, 'unicodedata.category(ch) not in ("Cc", "Cf")', 'unicodedata.category(ch) != "Cc"', (LADDER_T, "invisible_formatting"),
-    "a bidi override or a zero-width mark reaches the final prompt (found by the Haiku audit)")
+    "a bidi override or a zero-width mark reaches the final prompt (found by the audit)")
 mut("L24_zero_tests_accepted_by_the_step", LAD, '    if ran is not None and int(ran.group(1)) == 0:', '    if False:', (LADDER_T, "ran_zero_tests"),
     "a suite that ran 0 tests fails only in the check, with no message")
 mut("L25_line_breaks_of_unicode_dropped", LAD, '.replace("\\x85", "\\n").replace("\\u2028", "\\n").replace("\\u2029", "\\n")', '', (LADDER_T, "separates_two_findings"),

@@ -26,8 +26,7 @@ makeextreme is a small floor under agent pipelines whose stages are known in adv
 
 ### Status
 
-- The code was written by an AI agent (Claude Sonnet 5.5 running in Hermes) at the owner's direction.
-- **Published before its final independent audit.** That was the owner's one-time exception on 2026-11-01. The M1 core had five milestone audits, each by a fresh Sonnet 5.5 session with read-only access to the repository (the same model family as the author, not a different model); the fifth passed (0 blocker, 0 major, 1 minor, 3 plan items). A deeper audit is still to come.
+- **Published before its final independent audit.** On 2026-11-01, the M1 core had five milestone review rounds in separate read-only sessions; the fifth passed (0 blocker, 0 major, 1 minor, 3 plan items). These reviews do not constitute an independent human security audit. See [ROADMAP.md](ROADMAP.md) for later review findings and their limitations.
 - Version 1.2.0, one author, Linux only, Python standard library only; tested on Python 3.11 and 3.14.
 - Not compared with any other tool, so no ranking claim is made.
 
@@ -99,8 +98,7 @@ makeextreme 是给「阶段已知」的 agent 流水线垫的一层地板。它�
 
 ### 状态
 
-- 代码由 AI agent（运行在 Hermes 里的 Claude Sonnet 5.5）按所有者的指示编写。
-- **在最终独立审计之前就公开了。** 这是项目所有者在 2026-11-01 一次性的破例。M1 核心做过五轮里程碑审计，每轮都是一个全新的 Sonnet 5.5 会话、对仓库只读（与作者同一个模型家族，不是另一种模型）；第五轮通过（0 个 BLOCKER、0 个 MAJOR、1 个 MINOR、3 个 PLAN）。更深入的审计之后再做。
+- **在最终独立审计之前就公开了。** 2026-11-01，M1 核心经历五轮里程碑审查，每轮使用独立的只读会话；第五轮通过（0 个 BLOCKER、0 个 MAJOR、1 个 MINOR、3 个 PLAN）。这些审查不能等同于独立人工安全审计。后续审查结果及其局限见 [ROADMAP.md](ROADMAP.md)。
 - 版本 1.2.0，单人开发，仅限 Linux，只用 Python 标准库；在 Python 3.11 和 3.14 上测过。
 - 没有和任何其他工具做过对比，因此不作任何排名性的说法。
 
@@ -170,8 +168,7 @@ makeextreme ist ein kleiner Unterbau für Agenten-Pipelines, deren Stufen im Vor
 
 ### Stand
 
-- Der Code wurde von einem KI-Agenten (Claude Sonnet 5.5 in Hermes) im Auftrag des Eigentümers geschrieben.
-- **Veröffentlicht vor dem unabhängigen Abschluss-Audit.** Das war eine einmalige Ausnahme des Eigentümers am 2026-11-01. Der M1-Kern hatte fünf Meilenstein-Audits, jeweils durch eine frische Sonnet-5.5-Sitzung mit Lesezugriff auf das Repository (dieselbe Modellfamilie wie der Autor, kein anderes Modell); das fünfte bestand (0 Blocker, 0 Major, 1 Minor, 3 Plan-Punkte). Ein tieferes Audit folgt noch.
+- **Veröffentlicht vor dem unabhängigen Abschluss-Audit.** Am 2026-11-01 wurde der M1-Kern in fünf Meilensteinrunden in getrennten Sitzungen mit Lesezugriff geprüft; die fünfte bestand (0 Blocker, 0 Major, 1 Minor, 3 Plan-Punkte). Diese Prüfungen ersetzen kein unabhängiges menschliches Sicherheitsaudit. Spätere Prüfergebnisse und ihre Grenzen stehen in [ROADMAP.md](ROADMAP.md).
 - Version 1.2.0, ein Autor, nur Linux, nur die Python-Standardbibliothek; getestet mit Python 3.11 und 3.14.
 - Mit keinem anderen Werkzeug verglichen, daher keine Rangaussage.
 
