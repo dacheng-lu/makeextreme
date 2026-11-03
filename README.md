@@ -14,6 +14,11 @@
 
 [English](#english) · [简体中文](#zh-cn) · [Deutsch](#deutsch)
 
+[Website](https://www.dev-lu.com/) · [Documentation](docs/first-recovery.md) · [License](LICENSE)
+
+**Three independent projects:** [FlowLore](https://github.com/dacheng-lu/flowlore) · [Longhaul](https://github.com/dacheng-lu/longhaul) · [Makeextreme](https://github.com/dacheng-lu/makeextreme)  
+**No shared adapter or automatic handoff is built in.**
+
 [Value experiment example / 价值实验示例 / Nutzenexperiment](examples/value_validation/README.md)
 
 [Three-project guide / 三项目指南 / Leitfaden für drei Projekte](https://github.com/dacheng-lu/flowlore/blob/main/AGENT-GUIDE.md) · [Crash and evidence demo / 中断与证据演示 / Absturz- und Nachweis-Demo](examples/longhaul_recovery/README.md) · [Goal / 项目目标 / Ziel](GOAL.md) · [First recovery example / 产物恢复入门 / Wiederaufnahme-Beispiel](docs/first-recovery.md)
@@ -25,6 +30,8 @@ Version: **1.2.0** · [Design record / 设计记录 / Entwurfsprotokoll](ARCHITE
 **Choosing a tool:** Use Makeextreme for known-stage pipelines with runnable checks. Use [Longhaul](https://github.com/dacheng-lu/longhaul) for exploratory work, decisions and evidence across sessions. [FlowLore](https://github.com/dacheng-lu/flowlore) catalogs sources and recipes. All three work independently; a shared adapter is not implemented. [Try output recovery](docs/first-recovery.md).
 
 makeextreme is a small floor under agent pipelines whose stages are known in advance. It runs the stages of a task one after another, decides "done" from the **artifact** instead of an exit code, continues after a crash from the last green stage and never releases an irreversible stage on its own. It is a runner of about 600 lines in the Python standard library, not a framework, a scheduler or an agent.
+
+> **Recovery in practice:** In a documented 38-second video test, the runner was interrupted during OCR. After restarting, all **7 of 7 artifacts** matched an uninterrupted run byte for byte. [Explore the test](examples/video_pipeline/) and its limitations below.
 
 ### Status
 
@@ -98,6 +105,8 @@ Useful contributions include a reproducible crash-and-resume scenario, a stage y
 
 makeextreme 是给「阶段已知」的 agent 流水线垫的一层地板。它按顺序执行任务的各个阶段，用**产物**（而不是退出码）判定「完成」，崩溃后从最后一个通过的阶段继续，并且不会自行放行不可逆的阶段。它是一个约 600 行、只用 Python 标准库的运行器，不是框架、调度器或 agent。
 
+> **恢复案例：** 在一段 38 秒视频的测试中，运行器在 OCR 期间被中断；重新运行后，**7 项产物全部**与未中断运行逐字节一致。[查看测试](examples/video_pipeline/)及下方的限制说明。
+
 ### 状态
 
 - **在最终独立审计之前就公开了。** 2026-11-01，M1 核心经历五轮里程碑审查，每轮使用独立的只读会话；第五轮通过（0 个 BLOCKER、0 个 MAJOR、1 个 MINOR、3 个 PLAN）。这些审查不能等同于独立人工安全审计。后续审查结果及其局限见 [ROADMAP.md](ROADMAP.md)。
@@ -167,6 +176,8 @@ python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段�
 **Werkzeugwahl:** Makeextreme führt Pipelines mit bekannten Stufen und prüfbaren Ergebnissen aus; [Longhaul](https://github.com/dacheng-lu/longhaul) unterstützt offene Aufgaben, Entscheidungen und Belege über Sitzungen hinweg. [FlowLore](https://github.com/dacheng-lu/flowlore) sammelt Quellen und Rezepte. Alle drei funktionieren unabhängig; ein gemeinsamer Adapter ist nicht implementiert. [Ausgabe-Wiederherstellung ausprobieren](docs/first-recovery.md).
 
 makeextreme ist ein kleiner Unterbau für Agenten-Pipelines, deren Stufen im Voraus bekannt sind. Er führt die Stufen einer Aufgabe nacheinander aus, entscheidet „fertig“ am **Artefakt** statt am Exit-Code, setzt nach einem Absturz bei der letzten grünen Stufe fort und gibt eine nicht umkehrbare Stufe nie von selbst frei. Er ist ein Runner von rund 600 Zeilen in der Python-Standardbibliothek, kein Framework, kein Scheduler und kein Agent.
+
+> **Wiederaufnahme in der Praxis:** In einem dokumentierten Test mit einem 38 Sekunden langen Video wurde der Runner während OCR unterbrochen. Nach dem Neustart stimmten **alle 7 Artefakte** bytegenau mit einem ununterbrochenen Lauf überein. [Zum Test](examples/video_pipeline/) und den Grenzen weiter unten.
 
 ### Stand
 
@@ -262,3 +273,4 @@ Entwurfsquellen, keine mitgelieferten Abhängigkeiten oder behaupteten Partnersc
 - [areeves/revenant](https://github.com/areeves/revenant): another crash-resumable pipeline runner, seen and not evaluated / 另一个可恢复流水线运行器，只看到，未评测 / ein weiterer wiederaufnehmbarer Pipeline-Runner, gesehen und nicht bewertet.
 
 License / 许可证 / Lizenz: [Apache License 2.0](LICENSE).
+
