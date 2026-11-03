@@ -25,6 +25,8 @@
 
 Version: **1.2.0** · [Design record / 设计记录 / Entwurfsprotokoll](ARCHITECTURE.md) · [Apache-2.0](LICENSE)
 
+[Roadmap / 升级路线图 / Entwicklungsplan](ROADMAP.md) — released versions, what is still owed, candidates and what is deliberately not planned; proposed work, not shipped features.
+
 ## English
 
 **Choosing a tool:** Use Makeextreme for known-stage pipelines with runnable checks. Use [Longhaul](https://github.com/dacheng-lu/longhaul) for exploratory work, decisions and evidence across sessions. [FlowLore](https://github.com/dacheng-lu/flowlore) catalogs sources and recipes. All three work independently; a shared adapter is not implemented. [Try output recovery](docs/first-recovery.md).
