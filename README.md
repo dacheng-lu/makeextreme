@@ -31,7 +31,7 @@ Version: **1.2.0** · [Design record / 设计记录 / Entwurfsprotokoll](ARCHITE
 
 makeextreme is a small floor under agent pipelines whose stages are known in advance. It runs the stages of a task one after another, decides "done" from the **artifact** instead of an exit code, continues after a crash from the last green stage and never releases an irreversible stage on its own. It is a runner of about 600 lines in the Python standard library, not a framework, a scheduler or an agent.
 
-> **Recovery in practice:** In a documented 38-second video test, the runner was interrupted during OCR. After restarting, all **7 of 7 artifacts** matched an uninterrupted run byte for byte. [Explore the test](examples/video_pipeline/) and its limitations below.
+> **Recovery in practice:** In a documented 38-second video test, the runner was interrupted during OCR. After restarting, all **7 of 7 artifacts** matched an uninterrupted run byte for byte. [Explore the test](examples/video_pipeline/ac10.py) and its limitations below.
 
 ### Status
 
@@ -105,7 +105,7 @@ Useful contributions include a reproducible crash-and-resume scenario, a stage y
 
 makeextreme 是给「阶段已知」的 agent 流水线垫的一层地板。它按顺序执行任务的各个阶段，用**产物**（而不是退出码）判定「完成」，崩溃后从最后一个通过的阶段继续，并且不会自行放行不可逆的阶段。它是一个约 600 行、只用 Python 标准库的运行器，不是框架、调度器或 agent。
 
-> **恢复案例：** 在一段 38 秒视频的测试中，运行器在 OCR 期间被中断；重新运行后，**7 项产物全部**与未中断运行逐字节一致。[查看测试](examples/video_pipeline/)及下方的限制说明。
+> **恢复案例：** 在一段 38 秒视频的测试中，运行器在 OCR 期间被中断；重新运行后，**7 项产物全部**与未中断运行逐字节一致。[查看测试](examples/video_pipeline/ac10.py)及下方的限制说明。
 
 ### 状态
 
@@ -177,7 +177,7 @@ python3 -m makeextreme run demo     # 退出码 0；再运行一次，该阶段�
 
 makeextreme ist ein kleiner Unterbau für Agenten-Pipelines, deren Stufen im Voraus bekannt sind. Er führt die Stufen einer Aufgabe nacheinander aus, entscheidet „fertig“ am **Artefakt** statt am Exit-Code, setzt nach einem Absturz bei der letzten grünen Stufe fort und gibt eine nicht umkehrbare Stufe nie von selbst frei. Er ist ein Runner von rund 600 Zeilen in der Python-Standardbibliothek, kein Framework, kein Scheduler und kein Agent.
 
-> **Wiederaufnahme in der Praxis:** In einem dokumentierten Test mit einem 38 Sekunden langen Video wurde der Runner während OCR unterbrochen. Nach dem Neustart stimmten **alle 7 Artefakte** bytegenau mit einem ununterbrochenen Lauf überein. [Zum Test](examples/video_pipeline/) und den Grenzen weiter unten.
+> **Wiederaufnahme in der Praxis:** In einem dokumentierten Test mit einem 38 Sekunden langen Video wurde der Runner während OCR unterbrochen. Nach dem Neustart stimmten **alle 7 Artefakte** bytegenau mit einem ununterbrochenen Lauf überein. [Zum Test](examples/video_pipeline/ac10.py) und den Grenzen weiter unten.
 
 ### Stand
 
