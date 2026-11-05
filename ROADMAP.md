@@ -39,6 +39,7 @@ The order is a suggestion, not a plan.
 - A read-only command that reports, for each finished stage, whether it is still valid and why. Not built.
 - An expiry for approvals. Not built.
 - A threat model and an interface contract shared with Longhaul. [Longhaul's roadmap](https://github.com/dacheng-lu/longhaul/blob/main/ROADMAP.md) plans a threat model and a host adapter contract of its own and does not mention makeextreme; whether the two meet is undecided.
+- **A 2.0 direction: a sandbox provider and per-stage capabilities.** Proposed, not decided, not scheduled; design only, no code. [docs/proposals/trust-substrate-2.0.md](docs/proposals/trust-substrate-2.0.md) describes the provider interface, capability declarations, effect classes, a credential broker, leases and shadow mode. It is conditional on Longhaul's v1.3 measurement: if that shows no benefit, the direction is withdrawn.
 
 The last three came from a plan shared on 2026-11-01. Only the output-verification gap in it was measured, and that became 1.1.0.
 
