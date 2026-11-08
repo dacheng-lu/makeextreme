@@ -25,6 +25,24 @@ refused. Restore the requirement and, for `--done`, the original fingerprint.
 These changes are not yet part of a numbered release. The fingerprint checks do
 not prevent concurrent edits after the check, and they cannot prove external effects.
 
+A stage can now declare a positive `timeout` in seconds. When its `run` is still
+alive at the bound, the runner stops the whole process group (SIGTERM, then
+SIGKILL), reaps anything that still carries the stage's run id, records `failed`
+with `"failure": "timeout"` and a `timeout` journal event, and does not run `check`
+against a partial output. An approval stage that times out becomes `uncertain`
+instead of done. Adding or changing the bound changes the stage fingerprint, so a
+completed stage runs once more after the bound is added. `makeextreme/model_runner.py`
+is a minimal, non-agent adapter for one bounded local Ollama request; it records the
+model digest and the counters the runner reported and never retries. Tests:
+`tests/test_timeout.py` (a real process group with a live child, a timeout record,
+an approval stage that times out, invalid bounds, and a local fake server for the
+adapter's ok/timeout paths).
+
+These changes are not yet part of a numbered release. The adapter is one transport,
+not a model contract; a timeout is measured from the start of `run`, not from the
+first token, and the runner cannot prove that a descendant which leaves the process
+group and clears its environment is gone.
+
 ## Owed
 
 - **The project's own copyright line.** `LICENSE` ends with Apache-2.0's appendix boilerplate (`Copyright [yyyy] [name of copyright owner]`), which is part of the license text and stays verbatim. The project's own copyright statement (a line in `NOTICE.md` and/or source headers) is not written yet and needs the author's choice of name.

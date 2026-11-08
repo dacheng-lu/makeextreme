@@ -2,7 +2,7 @@ name: Verify recovery
 
 on:
   push:
-    branches: [fix/refuse-mismatched-proc]
+    branches: [main, fix/refuse-mismatched-proc]
   pull_request:
     paths:
       - 'makeextreme/**'
