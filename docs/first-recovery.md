@@ -30,3 +30,12 @@ The content check verifies only this example. A stage without declared
 `outputs` is not rechecked before a skip. Approval cannot establish who approved,
 and a real external effect may be uncertain after interruption; see the
 [README boundaries](../README.md#english) before using it for such work.
+
+## Captured public release sample
+
+FlowLore's `examples/release-digest/reproduce_snapshot.py` exercises the runner
+with a saved public release-response sample and an independently prepared expected
+report. It checks stale evidence and output drift, then runs the separate
+interruption/recovery demo. The sample is partial and the run makes no publishing
+or completeness claim. Use the revisions and command in FlowLore's example;
+Makeextreme does not fetch the source or make a release-content judgement.
