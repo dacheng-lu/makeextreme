@@ -1,0 +1,26 @@
+name: Joint audit records
+on:
+  pull_request:
+    paths:
+      - 'examples/audit_ladder/records/**'
+      - 'tests/test_audit_records.py'
+      - '.github/workflows/joint-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: dacheng-lu/longhaul
+          ref: 33226119dbaec9c0432911e25389a451af9ad83d
+          path: _longhaul_audit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p 'test_audit_records.py'
+      - run: python examples/audit_ladder/records/demo.py --longhaul _longhaul_audit
