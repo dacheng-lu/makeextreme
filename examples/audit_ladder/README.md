@@ -36,3 +36,9 @@ The two model commands are plain shell. They read the prompt from `$AUDIT_PROMPT
 ## What is and is not verified
 
 `tests/test_audit_ladder.py` (33 tests) and `tests/test_slice_diff.py` (13) run the ladder against a throw-away repository with stand-in models that only count their calls and print a canned report. Mutants `L1`-`L26` (`L21` was retired as an equivalent mutant) and `S1`-`S7` in `tests/mutants.py` cover the properties above. **It has not been run with a real model yet.** The pack matches callers by name, which is noisy for common names, and no static analyzer is used. Measured on this repository's real diffs the pack is 62% and 88% of the changed Python files for two ranges (5% for a two-function change): the saving here is modest because the diffs are wide, not deep.
+
+## Optional structured audit records
+
+[Audit record stages](records/README.md) add an offline coverage/findings validation
+and recovery example. They use a separate local format; they do not change the
+existing ladder or establish real-model audit effectiveness.
