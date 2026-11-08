@@ -147,6 +147,8 @@ def fingerprint(d, sp, hashes=None):
     doc = {"run": sp["run"], "check": sp["check"], "deps": deps}
     if sp.get("outputs"):  # only when declared: a stage without outputs keeps its 1.0.0 fingerprint
         doc["outputs"] = sp["outputs"]
+    if sp.get("timeout"):  # a bounded stage is a different stage: changing the bound invalidates a skip
+        doc["timeout"] = sp["timeout"]
     return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
 
 
@@ -234,6 +236,10 @@ def validate_spec(spec, d=None):
             raise SpecError(f"stage {sid}: 'approval' can only be \"required\"")
         if sp.get("approval") and not deps:
             raise SpecError(f"stage {sid}: an approval stage must declare the artifact it approves in 'deps'")
+        if "timeout" in sp:
+            timeout = sp["timeout"]
+            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not (timeout > 0):
+                raise SpecError(f"stage {sid}: 'timeout' must be a positive number of seconds")
     if d is not None:
         _check_paths(spec, d)
 
@@ -373,6 +379,31 @@ def reap(s):
         except ProcessLookupError:
             pass
     return sorted(killed)
+
+
+def terminate(proc, grace=5.0):
+    """Stop a stage's whole process group after it overran its bound.
+
+    SIGTERM first, then SIGKILL if the group is still alive after `grace` seconds.
+    Returns once the direct child has been waited for; callers that need proof about
+    grandchildren call `reap` as well, because a descendant may have left the group.
+    """
+    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, grace)):
+        if proc.poll() is not None:
+            break
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            break
+        try:
+            proc.wait(timeout=wait)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+    try:
+        proc.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def secret_hits(d):
@@ -520,18 +551,42 @@ def _run(t, d):
         cur["proc"] = proc
         s.update(pgid=proc.pid, pg_start=starttime(proc.pid))
         t.save()
-        rc = proc.wait()
-        chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True, errors="replace")
+        limit = sp.get("timeout")
+        timed_out = False
+        chk_rc, chk_out = None, ""
+        try:
+            rc = proc.wait(timeout=limit) if limit else proc.wait()
+        except subprocess.TimeoutExpired:
+            # The stage overran its declared bound: stop its whole process group, then
+            # look for anything it left behind that still carries the run id.
+            timed_out, rc, chk_rc, chk_out = True, None, None, ""
+            terminate(proc)
+            for pg in reap(s):
+                t.log("reaped", stage=sid, pgid=pg)
+            t.log("timeout", stage=sid, seconds=limit)
+        if not timed_out:
+            chk = subprocess.run(sp["check"], shell=True, cwd=d, capture_output=True, text=True, errors="replace")
+            chk_rc, chk_out = chk.returncode, chk.stdout.strip()[:200]
         try:
             outs = out_hashes(d, sp)
         except SpecError:  # an output that cannot be read is no evidence: it counts as absent
             outs = {x: "missing" for x in sp.get("outputs", [])}
         missing = [x for x, h in outs.items() if h == "missing"]
-        ok = rc == 0 and chk.returncode == 0 and not missing  # exit 0 alone is never "done"
+        ok = rc == 0 and chk_rc == 0 and not missing  # exit 0 alone is never "done"
+        failure = None
+        if timed_out:
+            failure = "timeout"  # retryable, but only by a new run with a fresh attempt record
+        elif not ok:
+            failure = ("missing_output" if missing else
+                       "check_failed" if rc == 0 and chk_rc != 0 else "nonzero_exit")
         # an approval stage that failed is `uncertain` from the first write on: a kill between two
         # writes must never leave `failed` behind (a plain run would repeat the irreversible command)
-        s.update(status="done" if ok else ("uncertain" if sp.get("approval") else "failed"), rc=rc, check_rc=chk.returncode,
-                 check_out=chk.stdout.strip()[:200])
+        s.update(status="done" if ok else ("uncertain" if sp.get("approval") else "failed"), rc=rc,
+                 check_rc=chk_rc, check_out=chk_out)
+        if failure:
+            s["failure"] = failure
+        else:
+            s.pop("failure", None)
         for k in ("pgid", "pg_start", "run_id"):
             s.pop(k, None)
         after_q = question_digest(d)
@@ -546,11 +601,14 @@ def _run(t, d):
         if ok and outs:
             s["sha256"] = outs  # this key name is exempt from the secret scan; any other turns the hashes into long_hex hits
         t.save()
-        t.log("end", stage=sid, ok=ok, rc=rc, check_rc=chk.returncode, **({"missing": missing} if missing else {}))
+        t.log("end", stage=sid, ok=ok, rc=rc, check_rc=chk_rc,
+              **({"missing": missing} if missing else {}), **({"failure": failure} if failure else {}))
         if not ok and sp.get("approval"):
             # it may have acted before it failed (or acted and left no evidence): not ours to repeat
+            why = (f"timed out after {limit}s" if timed_out
+                   else f"failed: rc={rc} check_rc={chk_rc}")
             return t.halt("uncertain", sid, EX_UNCERTAIN, "uncertain",
-                          reason=f"failed: rc={rc} check_rc={chk.returncode}" + (f" missing={missing}" if missing else ""))
+                          reason=why + (f" missing={missing}" if missing else ""))
         if not ok:
             t.state["status"] = "failed"
             t.save()
