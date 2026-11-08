@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "attempts_used": 0,
+  "max_attempts": 3,
+  "retry_reserve": 1,
+  "resources": {
+    "seconds": {
+      "remaining": 1800,
+      "attempt": 500,
+      "recovery": 200,
+      "verification": 600
+    },
+    "calls": {
+      "remaining": 10,
+      "attempt": 2,
+      "recovery": 1,
+      "verification": 3
+    }
+  }
+}
