@@ -19,7 +19,7 @@
 **Three independent projects:** [FlowLore](https://github.com/dacheng-lu/flowlore) · [Longhaul](https://github.com/dacheng-lu/longhaul) · [Makeextreme](https://github.com/dacheng-lu/makeextreme)  
 **No shared adapter or automatic handoff is built in.**
 
-[Value experiment example / 价值实验示例 / Nutzenexperiment](examples/value_validation/README.md)
+[Value experiment example / 价值实验示例 / Nutzenexperiment](examples/value_validation/README.md) · [Opportunity handoff / 升维实验交接 / Experimentübergabe](docs/opportunity-handoff.md)
 
 [Three-project guide / 三项目指南 / Leitfaden für drei Projekte](https://github.com/dacheng-lu/flowlore/blob/main/AGENT-GUIDE.md) · [Crash and evidence demo / 中断与证据演示 / Absturz- und Nachweis-Demo](examples/longhaul_recovery/README.md) · [Goal / 项目目标 / Ziel](GOAL.md) · [First recovery example / 产物恢复入门 / Wiederaufnahme-Beispiel](docs/first-recovery.md)
 
