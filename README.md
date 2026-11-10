@@ -14,7 +14,7 @@
 
 [English](#english) · [简体中文](#zh-cn) · [Deutsch](#deutsch)
 
-[Website](https://www.dev-lu.com/) · [Documentation](docs/first-recovery.md) · [License](LICENSE)
+[Website](https://www.dev-lu.com/) · [Documentation](docs/first-recovery.md) · [Asset-pack stage template](docs/asset-pipeline.md) · [License](LICENSE)
 
 **Three independent projects:** [FlowLore](https://github.com/dacheng-lu/flowlore) · [Longhaul](https://github.com/dacheng-lu/longhaul) · [Makeextreme](https://github.com/dacheng-lu/makeextreme)  
 **No shared adapter or automatic handoff is built in.**
