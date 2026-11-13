@@ -26,8 +26,9 @@ def mut(name, rel, old, new, selector, what):
 
 CORE_T, FP, APP, SEC, LOCK = ("test_core.py", "test_fingerprint.py", "test_approval.py",
                               "test_secrets.py", "test_lock.py")
+SCORER_PIPE, SP_T = "examples/scorer_pipeline/pipeline.py", "test_scorer_pipeline.py"
 
-mut("C1_exit0_is_done", CORE, 'ok = rc == 0 and chk.returncode == 0', 'ok = rc == 0', (CORE_T, "ac2"),
+mut("C1_exit0_is_done", CORE, 'ok = rc == 0 and chk_rc == 0 and not missing', 'ok = rc == 0', (CORE_T, "ac2"),
     "exit code 0 alone counts as done (the check is ignored)")
 mut("C2_skip_always", CORE, 'if s.get("digest") == fp:\n                bad = drifted', 'if True:\n                bad = drifted',
     (FP, None), "a done stage is skipped whatever changed")
@@ -106,7 +107,9 @@ mut("E2_interrupted_not_reaped", CORE,
     'if s["status"] in ("running", "interrupted"):  # the previous runner died or was stopped mid-stage',
     'if s["status"] == "running":  # the previous runner died or was stopped mid-stage',
     (FIND, "InterruptedStageIsReaped"), "what an interrupted ordinary stage left behind is not killed before the rerun")
-mut("E3a_check_utf8_in_run", CORE, 'text=True, errors="replace")\n        try:\n            outs', 'text=True)\n        try:\n            outs',
+mut("E3a_check_utf8_in_run", CORE,
+    'text=True, errors="replace")\n            chk_rc, chk_out = chk.returncode, chk.stdout.strip()[:200]\n        try:\n            outs',
+    'text=True)\n            chk_rc, chk_out = chk.returncode, chk.stdout.strip()[:200]\n        try:\n            outs',
     (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes the runner")
 mut("E3b_check_utf8_in_resolve", CORE, 'text=True, errors="replace")\n            if chk.returncode != 0:',
     'text=True)\n            if chk.returncode != 0:', (FIND, "NonUtf8Check"), "non-UTF-8 check output crashes resolve --done")
@@ -261,7 +264,7 @@ mut("O3_fingerprint_always_has_outputs", CORE,
     (OUT_T, "version_1_0_0"), "a stage without outputs no longer has its 1.0.0 fingerprint")
 mut("O4_approval_stage_is_made_again", CORE, '                if sp.get("approval"):  # it acted once;', '                if False:  # it acted once;',
     (OUT_T, "changed_output_makes_it_uncertain"), "an irreversible stage whose output changed is run again on its own")
-mut("O5_missing_output_is_done", CORE, 'ok = rc == 0 and chk.returncode == 0 and not missing', 'ok = rc == 0 and chk.returncode == 0',
+mut("O5_missing_output_is_done", CORE, 'ok = rc == 0 and chk_rc == 0 and not missing', 'ok = rc == 0 and chk_rc == 0',
     (OUT_T, "did_not_produce"), "a stage that did not produce its declared output is done")
 mut("O6_no_record_is_trusted", CORE, 'return [x for x, h in now.items() if rec.get(x) != h]',
     'return [x for x, h in now.items() if x in rec and rec[x] != h]', (OUT_T, "without_the_recorded_outputs"),
@@ -405,6 +408,12 @@ mut("RM5_roadmap_lists_an_unreleased_version", "ROADMAP.md", "- **1.0.0** (2026-
     (RM_T, "nothing_after"), "the roadmap lists a released version the code does not have")
 mut("Q1_question_counts_as_done", CORE, "if ok and after_q is not None and (after_q != before_q or was_waiting):", "if False:",
     ("test_waiting.py", None), "a stage that leaves a question is reported as done")
+mut("S1_scorer_score_zero_accepted", SCORER_PIPE,
+    "        raise ValueError('native scorer did not accept this reply')", "        pass",
+    (SP_T, None), "the score stage accepts any result the native scorer prints, score 0 included")
+mut("S2_scorer_score_check_ignored", SCORER_PIPE, "        checked_score()\n        return 0",
+    "        load('score.json')\n        return 0",
+    (SP_T, None), "the score stage's check parses the JSON but never looks at the score")
 
 _controls = {}
 

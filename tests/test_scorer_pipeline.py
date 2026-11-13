@@ -105,18 +105,112 @@ class ScorerPipeline(TaskCase):
             self.assertEqual(state['stages']['score']['failure'], 'nonzero_exit')
             self.assertEqual(self.read(d, 'score.json'), '')  # no old score masquerades as new
         finally:
-            if runner.poll() is None:
-                runner.kill()
-                runner.wait(timeout=10)
-            # If an assertion fails before recovery, reap only this task's
-            # recorded run id / original group, using the runner's own guard.
-            state_path = self.task_dir / 'task.json'
-            if state_path.exists():
-                state = json.loads(state_path.read_text())
-                stage = state.get('stages', {}).get('score', {})
-                if stage.get('status') == 'running':
-                    from makeextreme.core import reap
-                    reap(stage)
+            self.reap_if_running(runner)
+
+    GOOD = json.dumps({'score': 1, 'failure': None, 'expected': {}, 'got': {}, 'detail': 'matches'})
+
+    def reap_if_running(self, runner):
+        """Stop the runner under test and, if an assertion failed mid-stage, reap only this task's
+        recorded run id / original group with the runner's own guard."""
+        if runner.poll() is None:
+            runner.kill()
+            runner.wait(timeout=10)
+        state_path = self.task_dir / 'task.json'
+        if state_path.exists():
+            stage = json.loads(state_path.read_text()).get('stages', {}).get('score', {})
+            if stage.get('status') == 'running':
+                from makeextreme.core import reap
+                reap(stage)
+
+    def test_a_stage_completed_before_the_kill_is_not_repeated_on_resume(self):
+        """A crash records the stage that was running, not one next to it: the completed stage is
+        skipped on resume and the interrupted one is retried once (no off-by-one resume position)."""
+        d = str(self.task_dir)
+        spec = json.loads(self.read(d, 'stages.json'))
+        spec.insert(0, {'id': 'prepare', 'run': "printf 'prepared' > prep.txt",
+                        'check': 'test -s prep.txt', 'deps': [], 'outputs': ['prep.txt'], 'timeout': 30})
+        spec[1]['run'] = "if test ! -e held; then touch held; sleep 30; fi; " + spec[1]['run']
+        self.write(d, 'stages.json', json.dumps(spec))
+        self.write(d, 'reply.txt', self.GOOD)  # the reply is right; only the crash is under test
+        runner = mx_start('run', d)
+        try:
+            self.assertTrue(wait_for(os.path.join(d, 'held')), 'score did not start')
+            held = self.state(d)
+            self.assertEqual(held['stages']['prepare']['status'], 'done')
+            self.assertEqual(held['stages']['score']['status'], 'running')
+            os.kill(runner.pid, signal.SIGKILL)
+            runner.wait(timeout=10)
+            crashed = self.state(d)
+            self.assertEqual(crashed['stages']['score']['status'], 'running')  # recorded position
+            self.assertNotIn('report', crashed['stages'])  # not advanced past the crash
+            resumed = mx('run', d, timeout=60)
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            state = self.state(d)
+            self.assertEqual(state['status'], 'complete')
+            self.assertEqual(state['stages']['prepare']['attempts'], 1)
+            self.assertEqual(state['stages']['score']['attempts'], 2)
+            self.assertEqual(state['stages']['report']['attempts'], 1)
+            started = [e['stage'] for e in self.journal(d) if e['ev'] == 'start']
+            self.assertEqual(started.count('prepare'), 1)  # once, ever: completed work is not redone
+            self.assertIn('recovered_from_crash', self.events(d))
+        finally:
+            self.reap_if_running(runner)
+
+    def test_sigterm_mid_score_records_the_position_and_resumes_to_complete(self):
+        """The cron -15 case: exit 143, `interrupted` on the stage that was running and nowhere
+        else, and the next run completes the task."""
+        d = str(self.task_dir)
+        spec = json.loads(self.read(d, 'stages.json'))
+        spec[0]['run'] = "if test ! -e held; then touch held; sleep 30; fi; " + spec[0]['run']
+        self.write(d, 'stages.json', json.dumps(spec))
+        self.write(d, 'reply.txt', self.GOOD)
+        runner = mx_start('run', d)
+        try:
+            self.assertTrue(wait_for(os.path.join(d, 'held')), 'score did not start')
+            os.kill(runner.pid, signal.SIGTERM)
+            self.assertEqual(runner.wait(timeout=10), 128 + signal.SIGTERM)
+            state = self.state(d)
+            self.assertEqual(state['status'], 'interrupted')
+            self.assertEqual(state['stages']['score']['status'], 'interrupted')
+            self.assertNotIn('report', state['stages'])
+            resumed = mx('run', d, timeout=60)
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            state = self.state(d)
+            self.assertEqual(state['status'], 'complete')
+            self.assertEqual((state['stages']['score']['attempts'],
+                              state['stages']['report']['attempts']), (2, 1))
+            self.assertIn('recovered_from_interrupt', self.events(d))
+        finally:
+            self.reap_if_running(runner)
+
+    def test_a_killed_scorer_fails_the_stage_instead_of_accepting_its_output(self):
+        """Infrastructure death is not a score: an empty score.json cannot pass the check, and the
+        report does not run. Restoring the scorer and rerunning recovers without state surgery."""
+        d = str(self.task_dir)
+        self.scorer.write_text(
+            "import os, pathlib, time\n"
+            "pathlib.Path('scorer.pid').write_text(str(os.getpid()))\n"
+            "time.sleep(30)\n")
+        self.write(d, 'reply.txt', self.GOOD)  # a passing reply is on disk, but the scorer dies
+        runner = mx_start('run', d)
+        try:
+            self.assertTrue(wait_for(os.path.join(d, 'scorer.pid')), 'scorer did not start')
+            os.kill(int(self.read(d, 'scorer.pid')), signal.SIGKILL)
+            self.assertEqual(runner.wait(timeout=60), 2)
+            state = self.state(d)
+            self.assertEqual(state['status'], 'failed')
+            self.assertEqual(state['stages']['score']['failure'], 'nonzero_exit')
+            self.assertEqual(self.read(d, 'score.json'), '')
+            self.assertNotIn('report', state['stages'])
+            self.assertFalse((self.task_dir / 'accepted.json').exists())
+            self.scorer.write_text("import pathlib, sys\n"
+                                   "print(pathlib.Path(sys.argv[2]).read_text())\n")
+            recovered = mx('run', d, timeout=30)
+            self.assertEqual(recovered.returncode, 0, recovered.stderr)
+            self.assertEqual(self.state(d)['status'], 'complete')
+            self.assertTrue((self.task_dir / 'accepted.json').exists())
+        finally:
+            self.reap_if_running(runner)
 
 
 if __name__ == '__main__':
