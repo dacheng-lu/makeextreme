@@ -24,6 +24,19 @@ def wait_for(path, secs=8):
     return False
 
 
+def wait_for_value(fn, secs=8):
+    """The first truthy value `fn` returns within `secs`, else None. The runner records a
+    stage's pgid right after it starts the stage, so a stage can print before that record
+    is on disk: read the record by waiting for it, never by assuming it is already there."""
+    end = time.time() + secs
+    while time.time() < end:
+        value = fn()
+        if value:
+            return value
+        time.sleep(0.05)
+    return None
+
+
 def gone(pgid, secs=3):
     """True once no process of the group is left (polls: SIGKILL delivery is not instantaneous)."""
     end = time.time() + secs
