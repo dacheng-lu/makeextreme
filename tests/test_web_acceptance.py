@@ -179,6 +179,33 @@ class WebProbeTests(unittest.TestCase):
         self.assertEqual(report['status'], 'blocked')
         self.assertIn('no-such-browser', report['reason'])
 
+    def test_a_launch_that_never_reached_the_page_is_retried_once_then_blocked(self):
+        # Chrome's zygote exits 21 on a loaded host before the page runs: that is a launch
+        # failure, so it is tried once more and then reported as blocked, never as pass/fail.
+        def flaky(cmd, **kwargs):
+            if '--version' in cmd:
+                return subprocess.CompletedProcess(cmd, 0, 'Fake Chrome 157.0\n', '')
+            if not state['failed']:
+                state['failed'] = True
+                return subprocess.CompletedProcess(cmd, 21, '', 'Failed sending zygote boot message')
+            width, height = next(a.split('=')[1].split(',') for a in cmd if a.startswith('--window-size='))
+            return subprocess.CompletedProcess(cmd, 0, '<pre id="acceptance-result">' +
+                                               observation(int(width), int(height)) + '</pre>', '')
+        state = {'failed': False}
+        self.probe_with(flaky)
+        self.assertEqual(self.report()['status'], 'pass', 'one retry must rescue a launch that never ran')
+        self.assertEqual(self.gate(), 0)
+
+        def dead(cmd, **kwargs):
+            if '--version' in cmd:
+                return subprocess.CompletedProcess(cmd, 0, 'Fake Chrome 157.0\n', '')
+            return subprocess.CompletedProcess(cmd, 21, '', 'Failed sending zygote boot message')
+        self.probe_with(dead)
+        report = self.report()
+        self.assertEqual(report['status'], 'blocked')
+        self.assertIn('21', report['reason'])
+        self.assertNotEqual(self.gate(), 0)
+
     def test_a_report_that_names_no_browser_or_a_disabled_sandbox_does_not_pass(self):
         self.probe_with(FakeBrowser())
         self.assertEqual(self.gate(), 0)

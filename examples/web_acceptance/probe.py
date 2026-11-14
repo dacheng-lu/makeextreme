@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 STATES = ('checked', 'changed', 'restored')
 # Desktop and mobile window sizes. A headless browser may clamp the window (Chrome 157
@@ -94,6 +95,21 @@ def viewport_of(value):
     return None
 
 
+def dump_dom(browser, profile, width, height, uri):
+    """The browser's DOM dump. A launch that dies before the page produced its marker is
+    tried once more: Chrome's zygote exits 21 with "Failed sending zygote boot message" on a
+    loaded host (measured here under memory pressure), which says nothing about the page.
+    A browser that still cannot start is reported, never retried with --no-sandbox."""
+    for attempt in (1, 2):
+        result = subprocess.run([browser, *FLAGS, f'--user-data-dir={profile}-{attempt}',
+                                 f'--window-size={width},{height}', '--dump-dom', uri],
+                                text=True, capture_output=True, timeout=60)
+        if result.returncode == 0 or 'id="acceptance-result"' in result.stdout or attempt == 2:
+            return result
+        time.sleep(1)
+    return result
+
+
 def run():
     browser = find_browser()
     if not browser:
@@ -111,15 +127,13 @@ def run():
             page.write_text(source.replace('</body>', SCRIPT + '</body>', 1), encoding='utf-8')
             checks = []
             for width, height in REQUESTED:
-                result = subprocess.run([browser, *FLAGS,
-                    '--user-data-dir=' + str(root / f'profile-{width}'),
-                    f'--window-size={width},{height}', '--dump-dom', page.as_uri()],
-                    text=True, capture_output=True, timeout=60)
-                if result.returncode:
-                    write('blocked', f'browser exited {result.returncode} at {width}x{height}: '
-                          + tail(result.stderr), browser=record); return
+                result = dump_dom(browser, root / f'profile-{width}', width, height, page.as_uri())
                 marker = Marker(); marker.feed(result.stdout)
                 if not marker.text:
+                    if result.returncode:
+                        write('blocked', f'browser exited {result.returncode} at {width}x{height} '
+                              f'without rendering the page: ' + tail(result.stderr), browser=record)
+                        return
                     write('fail', f'probe marker missing at {width}x{height}', browser=record); return
                 observed = json.loads(marker.text)
                 seen = viewport_of(observed.get('viewport'))

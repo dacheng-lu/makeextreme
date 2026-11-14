@@ -89,6 +89,14 @@ class Paths:
         print(f'{"PASS" if ok else "FAIL"}  {path:<22} {detail}')
         return bool(ok)
 
+    def guard(self, name, fn, *args):
+        """Run one path group. A path that raised is a path not observed: it is recorded as a
+        failure with the exception, so one broken step cannot hide the steps that did run."""
+        try:
+            fn(*args)
+        except Exception as exc:  # noqa: BLE001 - the report is the point, not the traceback
+            self.check(name, False, f'raised {type(exc).__name__}: {exc}')
+
     # --- the paths -----------------------------------------------------------
     def pass_path(self, snapshot):
         made = self.make('pass', snapshot)
@@ -125,14 +133,19 @@ class Paths:
         new = self.journal('pass')[events:]
         kinds = [e['ev'] for e in new]
         report = self.report('pass') or {}
+        starts = self.events('pass', 'start')
+        attempt = starts[-1]['attempt'] if starts else None
         self.check('3 input drift', done.returncode == 0 and 'invalidated' in kinds and 'start' in kinds
-                   and report.get('status') == 'pass' and self.events('pass', 'start')[-1]['attempt'] == 2,
-                   f'rc={done.returncode} events={kinds} attempt={self.events("pass", "start")[-1]["attempt"]} '
-                   f'status={report.get("status")}')
+                   and report.get('status') == 'pass' and attempt == 2,
+                   f'rc={done.returncode} events={kinds} attempt={attempt} status={report.get("status")}')
 
     def output_drift_path(self):
+        report = self.report('pass') or {}
+        views = report.get('checks') or []
+        if not views or not views[0].get('states'):
+            self.check('4 output drift', False, 'there is no finished pass report to tamper with')
+            return
         report_file = self.task('pass') / 'report.json'
-        report = json.loads(report_file.read_text())
         report['checks'][0]['states'][1]['ok'] = False
         report_file.write_text(json.dumps(report, indent=2) + '\n')
         gate_on_tamper = self.gate('pass')
@@ -251,7 +264,8 @@ class Paths:
         leaked = [str(p) for p in self.work.rglob('*')
                   if p.is_file() and not p.is_symlink() and outside.resolve() not in p.resolve().parents
                   and CANARY in p.read_text(errors='replace')]
-        links = [str(p) for p in (self.task('pass') / 'site').rglob('*') if p.is_symlink()]
+        links = [str(p) for p in (self.task('pass') / 'site').rglob('*') if p.is_symlink()] \
+            if (self.task('pass') / 'site').is_dir() else ['the copied site is missing']
         self.check('8 symlinks', ok and not leaked and not links,
                    f'refused={[c["case"] for c in cases if c["rc"]]}/{len(cases)} copied-outside={leaked} '
                    f'symlinks-in-copied-site={links}')
@@ -277,14 +291,14 @@ def main():
     print(f'browser: {browser} ({sh(browser, "--version").stdout.strip()})')
     print(f'snapshot: {a.snapshot}\nwork: {work}\n')
     paths = Paths(work, browser)
-    paths.pass_path(a.snapshot)
-    paths.skip_path()
-    paths.input_drift_path()
-    paths.output_drift_path()
-    paths.fail_path(a.snapshot)
-    paths.blocked_path(a.snapshot)
-    paths.skipped_path(a.snapshot)
-    paths.symlink_path(a.snapshot)
+    paths.guard('1 pass', paths.pass_path, a.snapshot)
+    paths.guard('2 skip', paths.skip_path)
+    paths.guard('3 input drift', paths.input_drift_path)
+    paths.guard('4 output drift', paths.output_drift_path)
+    paths.guard('5 fail', paths.fail_path, a.snapshot)
+    paths.guard('6 blocked', paths.blocked_path, a.snapshot)
+    paths.guard('7 skipped', paths.skipped_path, a.snapshot)
+    paths.guard('8 symlinks', paths.symlink_path, a.snapshot)
     failed = [r for r in paths.results if not r['ok']]
     print(f'\n{len(paths.results) - len(failed)}/{len(paths.results)} paths observed')
     if a.json:
