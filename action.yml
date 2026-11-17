@@ -1,0 +1,15 @@
+name: Run Makeextreme stages
+description: Run a checked local stage sequence from a task directory on Linux
+inputs:
+  task-dir:
+    description: Task directory, absolute or relative to GITHUB_WORKSPACE
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Run stages
+      shell: bash
+      env:
+        MAKEEXTREME_ACTION_PATH: ${{ github.action_path }}
+        MAKEEXTREME_TASK_DIR: ${{ inputs.task-dir }}
+      run: bash "$MAKEEXTREME_ACTION_PATH/action/run.sh"
