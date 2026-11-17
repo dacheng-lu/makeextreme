@@ -16,6 +16,8 @@ Carry a task-owned experiment brief containing:
 - Resource cap, external-action boundaries and exit/rollback.
 - Artifact locations and checks that can actually run on this host.
 
+Use [stage design](stage-design.md) to consider whether each proposed stage is
+needed while preserving the chosen acceptance criteria and boundaries.
 Map the selected procedure into the normal `stages.json` contract. Include the
 brief and relevant fixtures/configuration in stage `deps`; name produced files in
 `outputs`; keep checks deterministic where possible. A changed goal or baseline

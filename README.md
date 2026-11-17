@@ -262,6 +262,7 @@ The design record is in Chinese. 设计记录使用中文。 Das Entwurfsprotoko
 | [makeextreme/secret_scan.py](makeextreme/secret_scan.py) | Credential detector (from Longhaul) · 凭证检测器（取自 Longhaul）· Zugangsdaten-Erkennung (aus Longhaul) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Design record and audit findings · 设计记录与审计发现 · Entwurfsprotokoll und Audit-Funde |
 | [ROADMAP.md](ROADMAP.md) | Version plan, in English · 版本计划（英文）· Versionsplan (Englisch) |
+| [docs/stage-design.md](docs/stage-design.md) | Stage design and simplification (English) · 阶段设计与简化（英文）· Stufenentwurf und Vereinfachung (Englisch) |
 | [NOTICE.md](NOTICE.md) · [docs/SOURCES.md](docs/SOURCES.md) | Sources and licenses · 来源与许可 · Quellen und Lizenzen |
 | [examples/video_pipeline/](examples/video_pipeline/) | AC10 video pipeline · AC10 视频流水线 · AC10-Video-Pipeline |
 | [examples/hermes_host/ac9.py](examples/hermes_host/ac9.py) | AC9 Hermes host · AC9 Hermes 宿主 · AC9-Hermes-Host |
