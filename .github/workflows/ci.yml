@@ -1,0 +1,84 @@
+name: CI
+
+# Canonical CI: full test suite on every push and every pull request.
+# The suite is Linux-only (README, ROADMAP candidate "CI on GitHub Actions").
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: unittest on python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.14']
+    # tests/test_examples.py creates HOME with tempfile.TemporaryDirectory(), which follows
+    # TMPDIR; examples/video_pipeline/ac10_mutants.py then copies the repository into
+    # $HOME/ac10work. With TMPDIR inside the checkout the copy includes itself and the test
+    # dies with RecursionError (reproduced 2026-11-09). Hence TMPDIR next to the checkout,
+    # not inside it and not in the shared system temp directory.
+    # The runner context is not available in jobs.<job_id>.env (actionlint: "context runner
+    # is not allowed here"), so the path is derived from github.workspace instead.
+    env:
+      TMPDIR: ${{ github.workspace }}/../mx-tmp
+      TEMP: ${{ github.workspace }}/../mx-tmp
+      TMP: ${{ github.workspace }}/../mx-tmp
+    steps:
+      - name: Check out the repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Create the temporary directory
+        run: mkdir -p "$TMPDIR"
+
+      - name: Guard the temporary directory
+        run: |
+          set -eu
+          raw="${TMPDIR:-}"
+          if [ -z "$raw" ]; then
+            echo "TMPDIR is empty or unset: the suite needs a temporary directory outside the checkout." >&2
+            exit 1
+          fi
+          case "$raw" in
+            /*) ;;
+            *)
+              echo "TMPDIR must be an absolute path, got: $raw" >&2
+              exit 1
+              ;;
+          esac
+          tmp="$(realpath -m "$raw")"
+          if [ -z "${GITHUB_WORKSPACE:-}" ]; then
+            echo "GITHUB_WORKSPACE is empty or unset: cannot prove that TMPDIR is outside the checkout." >&2
+            exit 1
+          fi
+          ws="$(realpath -m "$GITHUB_WORKSPACE")"
+          if [ "$tmp" = "/tmp" ] || [ "$tmp" = "/" ]; then
+            echo "TMPDIR resolves to the shared system temporary directory, which this suite must not use: $tmp" >&2
+            exit 1
+          fi
+          if [ "$tmp" = "$ws" ]; then
+            echo "TMPDIR is the checkout itself: the suite would copy the repository into itself." >&2
+            exit 1
+          fi
+          case "$tmp/" in
+            "$ws"/*)
+              echo "TMPDIR lies inside the checkout: the suite would copy the repository into itself." >&2
+              exit 1
+              ;;
+          esac
+          echo "TMPDIR=$tmp is outside the checkout $ws."
+
+      - name: Run the test suite
+        run: python -m unittest discover -s tests -p 'test_*.py'

@@ -1,0 +1,38 @@
+name: Action local recovery
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  example:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare a temporary task
+        shell: bash
+        run: |
+          task_dir="$(mktemp -d "$RUNNER_TEMP/makeextreme.XXXXXX")"
+          cp examples/github-action/stages.json examples/github-action/seed.txt "$task_dir/"
+          echo "TASK_DIR=$task_dir" >> "$GITHUB_ENV"
+      - name: Run until the intentional failure
+        id: first
+        uses: ./
+        with:
+          task-dir: ${{ env.TASK_DIR }}
+        continue-on-error: true
+      - name: Check failure and enable the second stage
+        shell: bash
+        env:
+          FIRST_OUTCOME: ${{ steps.first.outcome }}
+        run: |
+          test "$FIRST_OUTCOME" = failure
+          test -f "$TASK_DIR/prepared.txt"
+          test ! -e "$TASK_DIR/report.txt"
+          touch "$TASK_DIR/retry.flag"
+      - name: Resume in the same job
+        uses: ./
+        with:
+          task-dir: ${{ env.TASK_DIR }}
+      - name: Verify output and journal
+        run: python3 examples/github-action/verify.py "$TASK_DIR"

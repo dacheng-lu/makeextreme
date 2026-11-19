@@ -1,0 +1,16 @@
+[
+  {
+    "id": "prepare",
+    "run": "cp seed.txt prepared.txt",
+    "check": "cmp -s seed.txt prepared.txt",
+    "deps": ["seed.txt"],
+    "outputs": ["prepared.txt"]
+  },
+  {
+    "id": "render",
+    "run": "test -f retry.flag && cp prepared.txt report.txt",
+    "check": "cmp -s prepared.txt report.txt",
+    "deps": ["prepared.txt"],
+    "outputs": ["report.txt"]
+  }
+]
